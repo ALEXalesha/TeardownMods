@@ -1,0 +1,10 @@
+name = Trampoline Floor
+en_name = Trampoline Floor
+ru_name = Пол-батут
+author = Alexey
+en_description = Bounce pads. LMB places a 3 x 3 m trampoline pad on flat ground (up to 8), RMB removes the nearest one, R switches global mode in which the whole ground bounces. Players, loose objects and vehicles that land fast are thrown back up with the bounciness you set; with a boing, a dust ring and a dipping membrane. Options: bounciness, max bounce speed, who bounces (players, objects, vehicles), global mode radius and whether it starts on.
+ru_description = Батуты. ЛКМ ставит батут 3 x 3 м на ровную землю (до 8), ПКМ убирает ближайший, R включает режим, в котором прыгает вся земля. Игроки, предметы и машины, приземлившиеся на скорости, отскакивают вверх с заданной упругостью; со звуком «бойнг», кольцом пыли и прогибающейся сеткой. Настройки: упругость, предельная скорость отскока, кто прыгает (игроки, предметы, машины), радиус режима «вся земля» и включён ли он со старта.
+description = Bounce pads and a bouncy ground mode. / Батуты и режим «вся земля прыгает».
+tags = Tool
+preview = preview.jpg
+version = 2

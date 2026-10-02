@@ -18,10 +18,10 @@ and its own README in English and Russian. Russian version of this page: [README
 | [telekinesis](telekinesis) | Telekinesis | Lift several objects with your mind and throw them as a volley. |
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
 | [tornado](tornado) | Tornado | Spawn a wandering or steerable tornado. |
+| [trampoline-floor](trampoline-floor) | Trampoline Floor | Bounce pads and a bouncy ground mode. |
 <!-- /mods -->
 
-More mods are in progress (volcano, tsunami,
-trampoline floor, falling moon).
+More mods are in progress (volcano, tsunami, falling moon).
 
 ## Shared tooling
 

@@ -1,0 +1,10 @@
+name = Tornado
+en_name = Tornado
+ru_name = Торнадо
+author = Alexey
+en_description = A storm caller tool. LMB spawns a tornado at the aim point, RMB dismisses the nearest one. The funnel is made of spiralling particle layers, dark at the base, with a dust ring and flying debris, and a wind roar that gets louder as it comes closer. It wanders on a smooth random path or follows your aim (option), pulls loose objects and debris in and up, spins them and throws them out at the top, tears off weak parts (wood, glass, plaster, plastic) and loosens joints within a budget, and can lift vehicles and the player. Options: strength, size, lifetime, speed, movement, vehicles, player, building damage.
+ru_description = Инструмент вызова бури. ЛКМ создаёт торнадо в точке прицела, ПКМ развеивает ближайший. Воронка из закрученных слоёв частиц, тёмная у основания, с кольцом пыли и летящими обломками, и рёв ветра, который становится громче при приближении. Торнадо бродит по плавному случайному пути или идёт за прицелом (настройка), затягивает предметы и обломки внутрь и вверх, крутит их и выбрасывает наверху, отрывает слабые части (дерево, стекло, штукатурку, пластик) и рвёт соединения в пределах бюджета, может поднимать машины и игрока. Настройки: сила, размер, время жизни, скорость, движение, машины, игрок, разрушение построек.
+description = Spawn a wandering or steerable tornado. / Бродячий или управляемый торнадо.
+tags = Tool
+preview = preview.jpg
+version = 2

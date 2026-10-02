@@ -13,9 +13,10 @@ and its own README in English and Russian. Russian version of this page: [README
 | [mover](mover) | Mover | Gizmo gun: grab, rotate, freeze, clone, scale and undo. |
 | [singularity-grenade](singularity-grenade) | Singularity Grenade | A throwable gravity grenade that opens into a short-lived singularity. |
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
+| [tornado](tornado) | Tornado | Spawn a wandering or steerable tornado. |
 <!-- /mods -->
 
-More mods are in progress (tornado, portal gun, volcano, tsunami,
+More mods are in progress (portal gun, volcano, tsunami,
 trampoline floor, gravity, falling moon, vehicle remote control, telekinesis).
 
 ## Shared tooling

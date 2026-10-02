@@ -1,0 +1,10 @@
+name = Earthquake
+en_name = Earthquake
+ru_name = Землетрясение
+author = Alexey
+en_description = A seismic detonator tool. LMB starts an earthquake at the aim point (LMB again stops it), RMB switches the preset from Weak to Catastrophic. The ground shakes loose objects and vehicles, the camera shakes, dust rises and grit falls from ceilings; stronger quakes crack glass, wood and plaster, then concrete and brick, and loosen hinges and ropes, so weak buildings fail on their own. Optional aftershocks. Options: duration, starting preset, radius, aftershocks, structural damage, camera shake, epicentre.
+ru_description = Сейсмический детонатор. ЛКМ запускает землетрясение в точке прицела (повторное нажатие останавливает), ПКМ переключает силу от слабого до катастрофического. Земля трясёт незакреплённые предметы и машины, камера дрожит, поднимается пыль, с потолков сыплется крошка; сильные толчки ломают стекло, дерево и штукатурку, потом бетон и кирпич, рвут петли и тросы, и слабые постройки рушатся сами. Есть афтершоки. Настройки: длительность, сила, радиус, афтершоки, разрушения, тряска камеры, эпицентр.
+description = Seismic detonator: earthquakes from weak to catastrophic. / Сейсмический детонатор: землетрясения от слабого до катастрофического.
+tags = Tool
+preview = preview.jpg
+version = 2

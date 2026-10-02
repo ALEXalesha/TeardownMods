@@ -1,0 +1,10 @@
+name = Mover
+en_name = Mover
+ru_name = Перемещатель
+author = Alexey
+en_description = A gizmo gun for moving things. Hold LMB on any loose object, piece of debris or vehicle to grab it, mouse wheel pushes and pulls it along your view, Q/R, Z/X, V/B rotate it on three axes (smooth or snapped), T freezes it in place or unfreezes it, G clones it next to the original, N/M resamples its voxels to half or double size (experimental, small objects), U undoes the last move. The held object gets an outline and the controls are shown on screen. Options: distance, speed, position and rotation snapping, rotation speed, clone and scale switches, help panel.
+ru_description = Пушка-гизмо для перемещения предметов. Удерживайте ЛКМ на незакреплённом предмете, обломке или машине, чтобы схватить; колесо мыши двигает дальше и ближе, Q/R, Z/X, V/B крутят по трём осям (плавно или с шагом), T замораживает на месте или размораживает, G делает копию рядом, N/M пересчитывает воксели в половину или в два раза (опытная функция, для небольших предметов), U отменяет последнее перемещение. Схваченный предмет подсвечивается контуром, подсказка клавиш на экране. Настройки: дальность, скорость, привязка к сетке и шаг поворота, скорость поворота, клонирование и масштаб, панель подсказок.
+description = Gizmo gun: grab, rotate, freeze, clone, scale and undo. / Пушка-гизмо: хватай, крути, замораживай, клонируй, масштабируй, отменяй.
+tags = Tool
+preview = preview.jpg
+version = 2

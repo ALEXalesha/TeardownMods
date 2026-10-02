@@ -1,0 +1,10 @@
+name = Singularity Grenade
+en_name = Singularity Grenade
+ru_name = Гравитационная граната
+author = Alexey
+en_description = A throwable gravity grenade. Hold LMB to throw (longer = farther), RMB drops it at your feet. After it stops (or on impact, see Options) it rises and opens into a singularity for a few seconds: it pulls loose objects, debris and players in, spins them on a tight orbit, shreds glass, wood and plastic around it, and finally collapses with a flash and an outward blast. Options: radius, strength, duration, trigger mode, player pull, player damage, material tearing, ammo.
+ru_description = Метательная гравитационная граната. Удерживайте ЛКМ для броска (дольше = дальше), ПКМ - бросок под ноги. После остановки (или от удара, см. настройки) граната поднимается и раскрывается в сингулярность на несколько секунд: тянет к себе незакреплённые предметы, обломки и игроков, крутит их по орбите, рвёт стекло, дерево и пластик вокруг, а в конце схлопывается со вспышкой и толчком наружу. Настройки: радиус, сила, длительность, режим раскрытия, притяжение игрока, урон, разрушение материалов, боезапас.
+description = A throwable gravity grenade that opens into a short-lived singularity. / Метательная гравитационная граната, раскрывается в сингулярность.
+tags = Tool
+preview = preview.jpg
+version = 2

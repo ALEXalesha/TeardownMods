@@ -1,0 +1,10 @@
+name = Time Slow
+en_name = Time Slow
+ru_name = Замедление времени
+author = Alexey
+en_description = Hold H (or toggle, or pick another key in Options) to slow the world down to x0.5, x0.25 or x0.1 (J switches the speed). The slowdown ramps in and out smoothly, the picture turns blue and less saturated, music is muffled, a heartbeat plays, and whooshes mark entering and leaving slow motion. An energy meter drains while slowed and recharges afterwards (can be turned off). Optional faster walking while slowed. Note: Teardown slows everything, the player included; faster walking is an approximation.
+ru_description = Удерживайте H (или включайте нажатием, или выберите другую клавишу в настройках), чтобы замедлить мир до x0,5, x0,25 или x0,1 (J переключает скорость). Замедление входит и выходит плавно, картинка синеет и теряет цвет, музыка глохнет, слышно сердцебиение, вход и выход отмечены звуком. Шкала энергии тратится в замедлении и потом восстанавливается (можно выключить). По желанию ускоренная ходьба в замедлении. Важно: Teardown замедляет всё, включая игрока; ускоренная ходьба - приближение.
+description = Hold a key to slow the world down. / Удерживайте клавишу, чтобы замедлить мир.
+tags = Gameplay
+preview = preview.jpg
+version = 2

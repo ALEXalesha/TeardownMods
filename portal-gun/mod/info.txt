@@ -1,0 +1,10 @@
+name = Portal Gun
+en_name = Portal Gun
+ru_name = Портальная пушка
+author = Alexey
+en_description = A portal gun. LMB places the blue portal, RMB the orange one, on flat surfaces: walls, floors and ceilings. Walk, fall or throw objects into one and they come out of the other with their momentum turned to match the exit. Glowing animated rims, rim sparks, sounds for firing, opening, closing and passing through, a hand-held gun. R closes both portals. A portal closes by itself when the surface under it is destroyed. Teardown cannot render a view through a portal, so the portal surface is an animated swirl. Options: range, portal size, objects pass through, heaviest object, portals on moving objects, hum volume.
+ru_description = Портальная пушка. ЛКМ ставит синий портал, ПКМ оранжевый, на ровные поверхности: стены, пол и потолок. Войдите, упадите или бросьте предмет в один, и он выйдет из другого, а скорость повернётся по выходу. Светящаяся анимированная кайма, искры, звуки выстрела, открытия, закрытия и прохода, пушка в руках. R закрывает оба портала. Портал закрывается сам, если поверхность под ним разрушена. Показать вид сквозь портал Teardown не умеет, поэтому поверхность портала - анимированный вихрь. Настройки: дальность, размер, проход предметов, предельный вес, порталы на подвижных предметах, громкость гула.
+description = Blue and orange portals for players and objects. / Синий и оранжевый порталы для игрока и предметов.
+tags = Tool
+preview = preview.jpg
+version = 2

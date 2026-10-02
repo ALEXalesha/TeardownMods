@@ -10,6 +10,7 @@ and its own README in English and Russian. Russian version of this page: [README
 | [cutter](cutter) | Cutter | Angle grinder: cut straight kerfs through walls and vehicles. |
 | [drone](drone) | Camera Drone | Deployable camera drone with bomb drop. |
 | [earthquake](earthquake) | Earthquake | Seismic detonator: earthquakes from weak to catastrophic. |
+| [gravity](gravity) | Gravity Change | Switch the level gravity: Earth, Moon, Mars, zero-G, reverse, sideways. |
 | [mover](mover) | Mover | Gizmo gun: grab, rotate, freeze, clone, scale and undo. |
 | [portal-gun](portal-gun) | Portal Gun | Blue and orange portals for players and objects. |
 | [remote](remote) | Vehicle Remote | Drive any vehicle remotely like an RC car. |
@@ -20,7 +21,7 @@ and its own README in English and Russian. Russian version of this page: [README
 <!-- /mods -->
 
 More mods are in progress (volcano, tsunami,
-trampoline floor, gravity, falling moon).
+trampoline floor, falling moon).
 
 ## Shared tooling
 

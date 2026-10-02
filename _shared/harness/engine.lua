@@ -1179,7 +1179,8 @@ H.authorityErrors = 0
 -- are silently ignored by the game, so the harness reports them as errors.
 -- Evidence: SetTimeScale - the script_defs example uses server.tick and the game's
 -- own v2 script level/cullington/script/truxterminator.lua calls it from server code.
-H.SERVER_ONLY = { SetTimeScale = true }
+-- SetGravity - the script_defs example calls it from server.tick and it changes scene state.
+H.SERVER_ONLY = { SetTimeScale = true, SetGravity = true }
 H.serverOnlyErrors = 0
 
 H.allowedSides = {}
@@ -1255,7 +1256,8 @@ end
 ---------------------------------------------------------------------------
 function H.physicsStep(dt)
 	for h, b in pairs(H.bodies) do
-		if b.valid and b.dynamic and h ~= H.worldBody and not b.isTool then
+		-- sleeping bodies (active == false) are not simulated until something wakes them
+		if b.valid and b.dynamic and h ~= H.worldBody and not b.isTool and b.active ~= false then
 			b.vel = A.VecAdd(b.vel, A.VecScale(H.gravity, dt * b.gravityScale))
 			b.pos = A.VecAdd(b.pos, A.VecScale(b.vel, dt))
 			local r = b.half[2]

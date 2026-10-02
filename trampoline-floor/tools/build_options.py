@@ -8,8 +8,9 @@ from options_gen import gen_options  # noqa: E402
 
 YN = [(True, "Yes", "Да"), (False, "No", "Нет")]
 ROWS = [
-    {"kind": "slider", "key": "restitution", "label": ("Bounciness (restitution)", "Упругость"), "min": 0.3, "max": 1.3, "default": 0.85, "fmt": ("%.2f", "%.2f"), "step": 0.05},
-    {"kind": "slider", "key": "maxspeed", "label": ("Max bounce speed", "Макс. скорость отскока"), "min": 5, "max": 50, "default": 25.0, "fmt": ("%.0f m/s", "%.0f м/с"), "step": 1},
+    {"kind": "slider", "key": "restitution", "label": ("Bounciness (restitution)", "Упругость"), "min": 0.3, "max": 1.5, "default": 1.05, "fmt": ("%.2f", "%.2f"), "step": 0.05},
+    {"kind": "slider", "key": "maxspeed", "label": ("Max bounce speed", "Макс. скорость отскока"), "min": 5, "max": 60, "default": 30.0, "fmt": ("%.0f m/s", "%.0f м/с"), "step": 1},
+    {"kind": "slider", "key": "jumpboost", "label": ("Jump boost on contact", "Прибавка от прыжка"), "min": 0, "max": 15, "default": 6.0, "fmt": ("+%.0f m/s", "+%.0f м/с"), "step": 1},
     {"kind": "choice", "key": "players", "label": ("Players bounce", "Игроки прыгают"), "default": True, "choices": YN},
     {"kind": "choice", "key": "bodies", "label": ("Objects bounce", "Предметы прыгают"), "default": True, "choices": YN},
     {"kind": "choice", "key": "vehicles", "label": ("Vehicles bounce", "Машины прыгают"), "default": True, "choices": YN},

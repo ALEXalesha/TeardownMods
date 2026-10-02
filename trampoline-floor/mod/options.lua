@@ -11,8 +11,9 @@ local function tr(pair) if ru() then return pair[2] end return pair[1] end
 local TITLE = { "Trampoline Floor", "Пол-батут" }
 local SUBTITLE = { "Boing!", "Бойнг!" }
 local ROWS = {
-	{ kind = "slider", key = "restitution", label = { "Bounciness (restitution)", "Упругость" }, default = 0.85, min = 0.3, max = 1.3, fmt = { "%.2f", "%.2f" }, int = false, step = 0.05 },
-	{ kind = "slider", key = "maxspeed", label = { "Max bounce speed", "Макс. скорость отскока" }, default = 25.0, min = 5, max = 50, fmt = { "%.0f m/s", "%.0f м/с" }, int = false, step = 1 },
+	{ kind = "slider", key = "restitution", label = { "Bounciness (restitution)", "Упругость" }, default = 1.05, min = 0.3, max = 1.5, fmt = { "%.2f", "%.2f" }, int = false, step = 0.05 },
+	{ kind = "slider", key = "maxspeed", label = { "Max bounce speed", "Макс. скорость отскока" }, default = 30.0, min = 5, max = 60, fmt = { "%.0f m/s", "%.0f м/с" }, int = false, step = 1 },
+	{ kind = "slider", key = "jumpboost", label = { "Jump boost on contact", "Прибавка от прыжка" }, default = 6.0, min = 0, max = 15, fmt = { "+%.0f m/s", "+%.0f м/с" }, int = false, step = 1 },
 	{ kind = "choice", key = "players", label = { "Players bounce", "Игроки прыгают" }, default = true, choices = { { true, "Yes", "Да" }, { false, "No", "Нет" } } },
 	{ kind = "choice", key = "bodies", label = { "Objects bounce", "Предметы прыгают" }, default = true, choices = { { true, "Yes", "Да" }, { false, "No", "Нет" } } },
 	{ kind = "choice", key = "vehicles", label = { "Vehicles bounce", "Машины прыгают" }, default = true, choices = { { true, "Yes", "Да" }, { false, "No", "Нет" } } },

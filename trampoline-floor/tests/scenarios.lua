@@ -4,7 +4,8 @@ local function srv() return T.env().server end
 local function sh() return T.sharedOf() end
 local function callsOf(n) return H.calls[n] or 0 end
 
-T.budget("SetBodyVelocity", 40)
+T.budget("SetBodyVelocity", 60)
+T.budget("QueryRaycast", 24 + 4)
 T.budget("QueryAabbBodies", 12)
 T.budget("Spawn", 1)
 
@@ -69,7 +70,7 @@ H.P(1).vel = V(0, 0, 0)
 T.runUntil(function() return H.P(1).vel[2] > 2 end, 120)
 local up2 = H.P(1).vel[2]
 T.check(up2 < up * 0.75, string.format("lower restitution bounces lower (%.1f < %.1f)", up2, up))
-H.reg["savegame.mod.restitution"] = 0.85
+H.reg["savegame.mod.restitution"] = 1.05
 
 -- players off
 H.reg["savegame.mod.players"] = false
@@ -107,7 +108,7 @@ T.drawOptions(1)
 T.check(T.hasText("Trampoline Floor"), "options: title")
 H.uiSliderSet[1] = 260
 T.drawOptions(1)
-T.check(math.abs(H.reg["savegame.mod.restitution"] - 1.3) < 1e-6, "options: restitution to 1.3")
+T.check(math.abs(H.reg["savegame.mod.restitution"] - 1.5) < 1e-6, "options: restitution to 1.5")
 H.uiClicks["Reset to defaults"] = true
 T.drawOptions(1)
-T.check(math.abs(H.reg["savegame.mod.restitution"] - 0.85) < 1e-6, "options: reset")
+T.check(math.abs(H.reg["savegame.mod.restitution"] - 1.05) < 1e-6, "options: reset")

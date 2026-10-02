@@ -105,6 +105,27 @@ def build_preview():
     print("preview.jpg", n // 1024, "KB")
 
 
+def rotor_png(path, size=128):
+    """Spinning-rotor blur: a faint disc, two darker blade sweeps and a hub."""
+    import numpy as np
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    nx = (xx / (size - 1) - 0.5) * 2
+    ny = (yy / (size - 1) - 0.5) * 2
+    r = np.sqrt(nx ** 2 + ny ** 2)
+    ang = np.arctan2(ny, nx)
+    sweep = (0.5 + 0.5 * np.cos(2 * ang)) ** 6
+    a = np.where(r <= 1, 0.18 + 0.55 * sweep * np.clip(r * 1.3, 0, 1), 0)
+    a = a * np.clip((1 - r) * size / 4, 0, 1)
+    a = np.where(r < 0.12, 0.95, a)
+    v = np.where(r < 0.12, 60, 200 - 120 * sweep)
+    arr = np.zeros((size, size, 4), np.uint8)
+    arr[..., 0] = v.astype(np.uint8)
+    arr[..., 1] = v.astype(np.uint8)
+    arr[..., 2] = (v * 1.02).clip(0, 255).astype(np.uint8)
+    arr[..., 3] = (np.clip(a, 0, 1) * 255).astype(np.uint8)
+    Image.fromarray(arr, "RGBA").save(path)
+
+
 def build_icon():
     g = render_vox(read_vox(os.path.join(MOD, "vox", "drone.vox")), px=6, yaw=30, pitch=30, glow=0.5)
     size = 128
@@ -118,5 +139,6 @@ def build_icon():
 if __name__ == "__main__":
     os.makedirs(os.path.join(MOD, "ui"), exist_ok=True)
     art.dot_png(os.path.join(MOD, "ui", "dot.png"))
+    rotor_png(os.path.join(MOD, "ui", "rotor.png"))
     build_icon()
     build_preview()

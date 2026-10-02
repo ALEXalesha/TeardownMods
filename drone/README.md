@@ -12,7 +12,7 @@ A deployable quadcopter flown from its own camera. Russian: [README.ru.md](READM
 | P | | photo mode: hides the HUD and the static |
 | R | pack the drone up (within 4 m), bombs and battery refill | |
 
-- Own voxel model with four rotor shapes spinning (animated by the server, because the drone body is server-authored and clients may only read it; rotor collision is switched off), blinking LEDs, a light under the body, a hum loop whose volume and pitch follow the thrust.
+- Own voxel model with four rotors (rotor collision is off); their spin is a translucent blur disc drawn by the client, because moving shapes of a free-flying body every tick fights the physics solver (the game itself never does it). Blinking LEDs (server side, the body is server-authored), a light under the body, a hum loop whose volume and pitch follow the thrust.
 - Flight: velocity tracking with `ApplyBodyImpulse` plus gravity compensation, upright and tilted into motion with `ConstrainOrientation`. With no input it holds position.
 - Battery (3 min by default, more drain at high thrust): when empty the motors stop and the drone falls.
 - Signal range (150 m by default): from 75% of the range the picture gets static (noise and scan lines, static sound); past the range the link is lost, input is ignored and the drone slowly descends.
@@ -23,7 +23,7 @@ A deployable quadcopter flown from its own camera. Russian: [README.ru.md](READM
 
 ## What the API allows (honest notes)
 
-- The player's body is held with `DisablePlayerInput` from `server.tick`, the same way the game's spawn menu does; the camera is set with `SetCameraTransform` every frame. If `DisablePlayerInput` turned out to block the drone keys too, switch "Freeze player while flying" off in options.
+- Flight sets the body velocity every physics step with this step's gravity cancelled, and turns the body through its angular velocity, so it hovers exactly and responds the same at any frame rate. WASD/Space/Ctrl reach the server two ways: the client sends them with `ServerCall`, and the server also reads them with the player id the way the game's own turret does (`data/level/carib/script/turret.lua`). The pilot's body is held in place by position, not by `DisablePlayerInput`: the game's spawn menu uses that call precisely to swallow a player's input for other scripts.
 - Photo mode: there is no screenshot function in `script_defs.lua` (`Command` is deprecated and only exposes the game's screen recorder), so photo mode hides the HUD and you take the picture with Steam's screenshot key (F12).
 - Cross-mod drop works only because both mods are ours and agree on the registry keys; Teardown has no general way to call another mod's code.
 

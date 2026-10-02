@@ -948,7 +948,7 @@ end
 A.SetPlayerParam = function(name, value, id) local p = P(id); p.params = p.params or {}; p.params[name] = value end
 A.GetPlayerWalkingSpeed = function(id) return P(id).walkSpeed or 7 end
 A.SetPlayerWalkingSpeed = function(sp, id) P(id).walkSpeed = sp end
-A.DisablePlayerInput = function() end
+A.DisablePlayerInput = function(id) local p = P(id); H.inputDisabledUntil[p.id] = H.frame + 1 end
 A.DisablePlayer = function() end
 A.IsPlayerDisabled = function() return false end
 A.DisablePlayerDamage = function() end
@@ -1042,10 +1042,22 @@ A.SetToolAllowedZoom = function() end
 
 -- input
 local function inp(id) return P(id) end
-A.InputDown = function(name, id) return inp(id).input[name] == true end
-A.InputPressed = function(name, id) return inp(id).pressed[name] == true end
-A.InputReleased = function(name, id) return inp(id).released[name] == true end
-A.InputValue = function(name, id) local p = inp(id); p.values = p.values or {}; return p.values[name] or 0 end
+-- DisablePlayerInput(p) swallows that player's input for server-side readers for the rest of
+-- the frame and the next one: the game's spawn menu (data/script/spawn.lua) reads
+-- InputPressed("usetool", p) and then calls it precisely so the held tool's script does not
+-- see the click. Client-side reads stay live (the vehicle remote mod reads keys on the client
+-- while freezing the player, and works in the game).
+H.inputDisabledUntil = {}
+local function swallowed(id)
+	if H.ctx ~= "server" then return false end
+	local p = P(id)
+	local u = H.inputDisabledUntil[p.id]
+	return u ~= nil and H.frame <= u
+end
+A.InputDown = function(name, id) if swallowed(id) then return false end return inp(id).input[name] == true end
+A.InputPressed = function(name, id) if swallowed(id) then return false end return inp(id).pressed[name] == true end
+A.InputReleased = function(name, id) if swallowed(id) then return false end return inp(id).released[name] == true end
+A.InputValue = function(name, id) if swallowed(id) then return 0 end local p = inp(id); p.values = p.values or {}; return p.values[name] or 0 end
 A.InputLastPressedKey = function() return "" end
 A.InputClear = function() end
 A.LastInputDevice = function() return 1 end
@@ -1283,6 +1295,18 @@ function H.physicsStep(dt)
 					local pen = bx.max[2] - (b.pos[2] - r)
 					if pen < 0.5 then b.pos[2] = bx.max[2] + r; if b.vel[2] < 0 then b.vel[2] = -b.vel[2] * b.restitution end end
 				end
+			end
+			-- integrate the angular velocity (world space) into the orientation
+			local w = b.angvel
+			if w[1] ~= 0 or w[2] ~= 0 or w[3] ~= 0 then
+				local q = b.rot
+				local h = 0.5 * dt
+				local x = q[1] + h * (w[1] * q[4] + w[2] * q[3] - w[3] * q[2])
+				local y = q[2] + h * (w[2] * q[4] + w[3] * q[1] - w[1] * q[3])
+				local z = q[3] + h * (w[3] * q[4] + w[1] * q[2] - w[2] * q[1])
+				local ww = q[4] - h * (w[1] * q[1] + w[2] * q[2] + w[3] * q[3])
+				local n = math.sqrt(x * x + y * y + z * z + ww * ww)
+				b.rot = { x / n, y / n, z / n, ww / n }
 			end
 			b.angvel = A.VecScale(b.angvel, 0.98)
 			if b.pos[2] < -100 then b.valid = false end

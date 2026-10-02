@@ -92,7 +92,9 @@ function server.tick(dt)
 		shared.rc[p] = nil
 	end
 	for p in Players() do
-		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
+		-- on foot the click is read here; while driving, DisablePlayerInput (the freeze option)
+		-- swallows server-side reads, so the client forwards the hop click instead
+		if not server.c[p] and GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
 			if InputPressed("usetool", p) then server.grab(p) end
 		end
 		local c = server.c[p]
@@ -240,6 +242,7 @@ function client.tick(dt)
 			client.sent = { d = d, s = st, b = b }
 		end
 		if InputPressed("q") then ServerCall("server.release", me) end
+		if InputPressed("usetool") and GetPlayerTool() == TOOL then ServerCall("server.grab", me) end
 		if InputPressed("v") then client.follow = not client.follow end
 		if client.follow then
 			client.yaw = client.yaw - math.deg(InputValue("camerax")) * s.sens

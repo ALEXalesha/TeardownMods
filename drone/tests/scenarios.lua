@@ -8,8 +8,15 @@ local function sh() return T.sharedOf() end
 local function me() return sh().d[1] end
 local function callsOf(n) return H.calls[n] or 0 end
 local function holdKey(k, n) for i = 1, n do T.hold(k); T.frames(1) end end
+-- the pilot's body is held where it stood; walking it elsewhere means moving that spot too
+local function movePlayer(v)
+	H.P(1).pos = v
+	local d = srv().d[1]
+	if d and d.pin then d.pin.pos = { v[1], v[2], v[3] } end
+end
 
-T.budget("ApplyBodyImpulse", 2 * 4)
+T.budget("SetBodyVelocity", 2 * 4)
+T.budget("DrawSprite", 4 * 2)
 T.budget("Spawn", 3)
 T.budget("QueryRaycast", 8)
 T.budget("ServerCall", 3)
@@ -31,7 +38,9 @@ T.check(me().piloting, "player is piloting")
 T.check(T.soundsPlayed("deploy.ogg") == 1, "deploy sound")
 T.frames(2)
 T.check(H.camera ~= nil and H.cameraFov == 90, "camera moved to the drone (fov 90)")
-T.check(callsOf("DisablePlayerInput") > 0, "player body frozen while flying")
+H.P(1).vel = V(6, 0, 0)
+T.frames(3)
+T.check(math.abs(H.P(1).pos[1]) < 0.01 and callsOf("DisablePlayerInput") == 0, "pilot's body held in place, without DisablePlayerInput")
 T.check(T.hasText("BAT") and T.hasText("SIGNAL"), "telemetry HUD")
 T.check(T.loopFrames("hum.ogg") > 0, "rotor hum plays")
 
@@ -95,18 +104,18 @@ T.press("usetool"); T.frames(2)
 T.check(me().piloting and me().body == body, "LMB on foot takes control of the same drone")
 
 -- range: weak signal, static, lost link
-H.P(1).pos = V(0, 0, 130)
+movePlayer(V(0, 0, 130))
 T.frames(5)
 T.check(me().weak > 0.2, string.format("signal weakens near the edge (%.2f)", me().weak))
 T.check(callsOf("UiSoundLoop") > 0, "static sound")
-H.P(1).pos = V(0, 0, 200)
+movePlayer(V(0, 0, 200))
 T.frames(5)
 T.check(me().lost, "signal lost past the range")
 T.check(T.hasText("SIGNAL LOST"), "HUD says SIGNAL LOST")
 local yl = H.bodies[body].pos[2]
 T.frames(120)
 T.check(H.bodies[body].pos[2] < yl - 0.5, "lost drone descends")
-H.P(1).pos = V(0, 0, 0)
+movePlayer(V(0, 0, 0))
 T.frames(5)
 
 -- battery empty -> falls -> crash

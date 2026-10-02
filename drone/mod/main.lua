@@ -8,9 +8,18 @@
 -- range edge the picture gets static, past it the drone loses the link and
 -- slowly descends. Hitting something too fast breaks it.
 --
--- Client: reads the pilot's input (raw keys are client side), camera, HUD,
---         static, marker, sounds, rotor animation. Sends input with ServerCall.
--- Server: drone bodies, flight physics, battery, range, crash, bombs.
+-- Client: camera, HUD, static, marker, sounds, rotor blur discs. Sends the
+--         view yaw and its key state with ServerCall.
+-- Server: drone bodies, flight, battery, range, crash, bombs. Movement keys are
+--         also read here with the player id, the way the game's own turret
+--         does (data/level/carib/script/turret.lua), so either path works.
+--
+-- Flight sets the body velocity directly every physics step (with this step's
+-- gravity cancelled) and steers the orientation through the angular velocity:
+-- exact at any mass and frame rate. The pilot's body is held in place by
+-- position, not by DisablePlayerInput, which swallows that player's input for
+-- server-side readers. Rotor shapes are never moved on the flying body; the
+-- spinning blur is drawn by the client.
 
 #include "script/include/player.lua"
 #include "script/toolanimation.lua"
@@ -22,6 +31,10 @@ local DEBRIS_XML = "<body dynamic='true'><voxbox size='3 1 2'/></body>"
 local REQ = "level.singularity_grenade."
 local CLIMB = 4.0
 local PACK_DIST = 4.0
+local RESPONSE = 5.0      -- 1/s, how fast the velocity follows the sticks
+local MAX_ACC = 30        -- m/s^2
+local TURN_GAIN = 8       -- 1/s, orientation error -> angular velocity
+local MAX_TURN = 6        -- rad/s
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -54,6 +67,17 @@ end
 local function isRotor(shape)
 	local sx, sy, sz = GetShapeSize(shape)
 	return sx == 7 and sy == 1 and sz == 7
+end
+
+-- world space angular velocity that turns rotation `cur` into `target`
+local function turnTowards(cur, target, gain, maxw)
+	local q = QuatRotateQuat(target, Quat(-cur[1], -cur[2], -cur[3], cur[4]))
+	local x, y, z, w = q[1], q[2], q[3], q[4]
+	if w < 0 then x, y, z, w = -x, -y, -z, -w end
+	local sn = math.sqrt(x * x + y * y + z * z)
+	if sn < 1e-6 then return Vec(0, 0, 0) end
+	local m = math.min(2 * math.atan2(sn, w) * gain, maxw)
+	return Vec(x / sn * m, y / sn * m, z / sn * m)
 end
 
 ---------------------------------------------------------------------------
@@ -90,8 +114,10 @@ function server.tick(dt)
 	end
 	for p in Players() do
 		local d = server.d[p]
-		if d and d.piloting and d.s.freeze then
-			DisablePlayerInput(p)
+		if d and d.piloting and d.s.freeze and d.pin then
+			-- hold the pilot's body where it stood; DisablePlayerInput would also swallow the keys
+			SetPlayerTransform(d.pin, p)
+			SetPlayerVelocity(Vec(0, 0, 0), p)
 		end
 	end
 end
@@ -113,12 +139,10 @@ function server.deploy(p)
 	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then body = ents[i] break end end
 	if body == 0 then return end
 	local shapes = GetBodyShapes(body)
-	local rotors, hull = {}, 0
+	local hull = 0
 	for i = 1, #shapes do
 		if isRotor(shapes[i]) then
 			SetShapeCollisionFilter(shapes[i], 0, 0)
-			local sx, sy, sz, vs = GetShapeSize(shapes[i])
-			rotors[#rotors + 1] = { shape = shapes[i], t0 = GetShapeLocalTransform(shapes[i]), center = Vec(sx * vs * 0.5, 0, sz * vs * 0.5) }
 		elseif hull == 0 then
 			hull = shapes[i]
 		end
@@ -126,8 +150,8 @@ function server.deploy(p)
 	SetTag(body, "camera_drone")
 	server.d[p] = {
 		body = body, piloting = true, input = { f = 0, s = 0, u = 0 }, yaw = yaw, battery = 1,
-		bombs = s.bombs, prevVel = Vec(0, 0, 0), s = s, age = 0, lowWarned = false,
-		rotors = rotors, hull = hull, rotorAngle = 0, ledOn = nil,
+		bombs = s.bombs, expect = nil, s = s, age = 0, lowWarned = false,
+		hull = hull, ledOn = nil, pin = GetPlayerTransform(p),
 	}
 	local st = sd(p)
 	st.body = body
@@ -146,7 +170,7 @@ function server.setPiloting(p, on)
 		return
 	end
 	d.piloting = on
-	if not on then d.input = { f = 0, s = 0, u = 0 } end
+	if on then d.pin = GetPlayerTransform(p) else d.input = { f = 0, s = 0, u = 0 } end
 	sd(p).piloting = on
 end
 
@@ -241,17 +265,23 @@ function server.update(dt)
 	server.updateBombs(dt)
 end
 
+-- movement keys: what the client sent, or read here with the player id
+local function sticks(p, d)
+	local function axis(a, b) return (InputDown(a, p) and 1 or 0) - (InputDown(b, p) and 1 or 0) end
+	local function pick(client, server) if client ~= 0 then return client end return server end
+	return pick(d.input.f, axis("up", "down")), pick(d.input.s, axis("right", "left")), pick(d.input.u, axis("jump", "crouch"))
+end
+
 function server.fly(p, d, dt)
 	local s = d.s
 	local st = sd(p)
 	d.age = d.age + dt
 	local bt = GetBodyTransform(d.body)
 	local vel = GetBodyVelocity(d.body)
-	local mass = math.max(GetBodyMass(d.body), 0.5)
+	local g = GetGravity()
 
-	-- crash: sudden change of velocity that our own control could not cause
-	local dv = VecLength(VecSub(vel, d.prevVel))
-	if d.age > 0.5 and dv > s.crash then
+	-- crash: the velocity is not what our controller left it at (something hit us)
+	if d.expect and d.age > 0.5 and VecLength(VecSub(vel, d.expect)) > s.crash then
 		server.crash(p, d, bt.pos)
 		return
 	end
@@ -271,45 +301,37 @@ function server.fly(p, d, dt)
 	end
 	st.battery = d.battery
 
-	local inp = d.input
-	if lost or not d.piloting then inp = { f = 0, s = 0, u = 0 } end
+	local f, side, u = 0, 0, 0
+	if d.piloting and not lost then f, side, u = sticks(p, d) end
 	local fwd, right = yawFrame(d.yaw)
-	local desired = VecAdd(VecScale(fwd, inp.f * s.speed), VecScale(right, inp.s * s.speed))
-	local vy = inp.u * CLIMB
-	if lost then vy = -0.6 end
-	desired = Vec(desired[1], vy, desired[3])
+	local desired = VecAdd(VecScale(fwd, f * s.speed), VecScale(right, side * s.speed))
+	desired = Vec(desired[1], lost and -0.6 or u * CLIMB, desired[3])
 
-	local acc = Vec(0, 0, 0)
 	if motors then
-		local k = math.min(1, 3 * dt)
-		acc = VecAdd(VecScale(VecSub(desired, vel), k / dt), Vec(0, 10, 0))
-		local a = VecLength(acc)
-		if a > 40 then acc = VecScale(acc, 40 / a) end
-		ApplyBodyImpulse(d.body, TransformToParentPoint(bt, GetBodyCenterOfMass(d.body)), VecScale(acc, mass * dt))
-		-- keep it upright, facing the camera yaw, tilted into the motion
-		local tiltX = -inp.f * 12
-		local tiltZ = -inp.s * 12
-		ConstrainOrientation(d.body, 0, bt.rot, QuatEuler(tiltX, d.yaw, tiltZ), 4, mass * 3)
+		-- velocity follows the sticks with a first-order response, limited acceleration,
+		-- and this step's gravity cancelled so the drone holds its altitude exactly
+		local change = VecScale(VecSub(desired, vel), 1 - math.exp(-RESPONSE * dt))
+		local cl = VecLength(change)
+		if cl > MAX_ACC * dt then change = VecScale(change, MAX_ACC * dt / cl) end
+		local nv = VecSub(VecAdd(vel, change), VecScale(g, dt))
+		SetBodyVelocity(d.body, nv)
+		d.expect = VecAdd(nv, VecScale(g, dt))
+		-- upright, facing the view, tilted into the motion
+		local target = QuatEuler(-f * 12, d.yaw, -side * 12)
+		SetBodyAngularVelocity(d.body, turnTowards(bt.rot, target, TURN_GAIN, MAX_TURN))
+		st.thrust = clamp(0.35 + cl / (MAX_ACC * dt) * 0.65, 0, 1)
+	else
+		-- motors off: free fall, so a hard landing still breaks it
+		d.expect = VecAdd(vel, VecScale(g, dt))
+		st.thrust = 0
 	end
-	st.thrust = motors and clamp(VecLength(acc) / 20, 0, 1) or 0
 	st.yaw = d.yaw
 	server.animate(d, st, dt)
-	-- predicted velocity after our impulse, so the crash test ignores our own push
-	d.prevVel = VecAdd(VecAdd(vel, VecScale(acc, dt)), Vec(0, -10 * dt, 0))
 end
 
--- Rotor spin and LED blink. The drone body is spawned by the server, so in
--- #version 2 only server code may change its shapes (clients may only read them).
+-- LED blink. The drone body is spawned by the server, so in #version 2 only server
+-- code may change its shapes; the rotor blur is drawn by the client.
 function server.animate(d, st, dt)
-	d.rotorAngle = (d.rotorAngle + dt * (900 + 1500 * st.thrust)) % 360
-	for i = 1, #d.rotors do
-		local e = d.rotors[i]
-		if IsHandleValid(e.shape) then
-			local dir = (i % 2 == 0) and 1 or -1
-			local pivot = Transform(e.center, QuatAxisAngle(Vec(0, 1, 0), d.rotorAngle * dir))
-			SetShapeLocalTransform(e.shape, TransformToParentTransform(e.t0, TransformToParentTransform(pivot, Transform(VecScale(e.center, -1)))))
-		end
-	end
 	local on = math.floor(d.age * 2) % 2 == 0
 	if d.hull ~= 0 and on ~= d.ledOn and IsHandleValid(d.hull) then
 		d.ledOn = on
@@ -347,6 +369,7 @@ function client.init()
 		client.snd[n] = LoadSound("MOD/snd/" .. n .. ".ogg")
 	end
 	client.hum = LoadLoop("MOD/snd/hum.ogg", 12)
+	client.blur = LoadSprite("MOD/ui/rotor.png")
 	client.anim = {}
 	client.seen = {}
 	client.camYaw = 0
@@ -437,7 +460,7 @@ function client.pilot(st, s, dt)
 	client.camPitch = clamp(client.camPitch - math.deg(InputValue("cameray")) * s.sens, -85, 35)
 	local sent = client.sent
 	sent.t = sent.t + dt
-	if f ~= sent.f or side ~= sent.s or u ~= sent.u or (math.abs(client.camYaw - sent.yaw) > 0.5 and sent.t > 0.033) then
+	if f ~= sent.f or side ~= sent.s or u ~= sent.u or math.abs(client.camYaw - sent.yaw) > 0.2 or sent.t > 0.25 then
 		ServerCall("server.droneInput", me, f, side, u, client.camYaw)
 		sent.f, sent.s, sent.u, sent.yaw, sent.t = f, side, u, client.camYaw, 0
 	end
@@ -465,10 +488,28 @@ function client.pilot(st, s, dt)
 end
 
 function client.animateDrone(st, dt)
-	-- sound and light only: rotors and LEDs are animated on the server (server.animate)
+	-- sound and light; the spinning rotor blur is drawn in client.render
 	local bt = GetBodyTransform(st.body)
 	PlayLoop(client.hum, bt.pos, 0.3 + 0.5 * st.thrust, true, 0.8 + 0.6 * st.thrust)
 	PointLight(VecAdd(bt.pos, Vec(0, -0.3, 0)), 1, 0.95, 0.85, 0.6)
+end
+
+-- translucent spinning discs over the rotor shapes (reading shapes is allowed on the client)
+function client.drawRotors(st)
+	local shapes = GetBodyShapes(st.body)
+	local spin = client.blink * (20 + 25 * st.thrust)
+	for i = 1, #shapes do
+		local sh = shapes[i]
+		if isRotor(sh) then
+			local sx, sy, sz, vs = GetShapeSize(sh)
+			local wt = GetShapeWorldTransform(sh)
+			local c = TransformToParentPoint(wt, Vec(sx * vs * 0.5, sy * vs * 0.5, sz * vs * 0.5))
+			local dir = (i % 2 == 0) and 1 or -1
+			local rot = QuatRotateQuat(wt.rot, QuatRotateQuat(QuatEuler(0, spin * dir * 57.3, 0), QuatEuler(90, 0, 0)))
+			local size = sx * vs * 1.15
+			DrawSprite(client.blur, Transform(c, rot), size, size, 0.85, 0.85, 0.85, 0.55, true, false)
+		end
+	end
 end
 
 -- crash sparks, at a fixed rate
@@ -494,6 +535,9 @@ function client.update(dt)
 end
 
 function client.render(dt)
+	for p, other in pairs(shared.d) do
+		if other.body ~= 0 and IsHandleValid(other.body) then client.drawRotors(other) end
+	end
 	local st = mine()
 	if not st or not st.piloting or st.body == 0 or not IsHandleValid(st.body) then return end
 	if client.photo then return end

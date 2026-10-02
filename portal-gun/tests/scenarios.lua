@@ -94,7 +94,7 @@ T.press("usetool"); T.frames(2)
 b = pr()[1]
 T.check(b.active and b.ny > 0.99, "blue portal on the floor")
 H.P(1).pitch = 0
-T.frames(30)   -- let the teleport cooldown run out
+T.frames(90)   -- let the 1 s teleport cooldown run out
 H.P(1).pos = V(b.x, 0, b.z)
 H.P(1).vel = V(0, -1, 0)
 T.frames(1)
@@ -146,3 +146,45 @@ T.check(H.reg["savegame.mod.size"] == 3, "options: size Normal -> Large")
 H.uiClicks["Reset to defaults"] = true
 T.drawOptions(1)
 T.check(H.reg["savegame.mod.size"] == 2 and H.reg["savegame.mod.range"] == 100, "options: reset")
+
+-- cooldown: standing still in a portal must not bounce back and forth
+H.P(1).pos = V(0, 0, 0)
+H.P(1).yaw = 0
+H.P(1).pitch = 0
+T.press("usetool"); T.frames(2)
+H.P(1).yaw = -90
+T.press("grab"); T.frames(2)
+T.check(pr()[1].active and pr()[2].active, "pair placed for the cooldown test")
+local passes0 = pr().passN
+H.P(1).yaw = 0
+H.P(1).pos = V(0, 0, -9.65)
+H.P(1).vel = V(0, 0, -1)
+T.frames(1)
+T.check(pr().passN == passes0 + 1, "first entry teleports")
+-- now stand still right in front of the exit portal for 3 seconds
+for i = 1, 180 do
+	local pp = H.P(1)
+	pp.vel = V(0, 0, 0)
+	pp.pos = V(9.6, 0, pp.pos[3])
+	T.frames(1)
+end
+T.check(pr().passN == passes0 + 1, "standing still in the exit portal does not bounce back (" .. (pr().passN - passes0) .. " teleports)")
+-- walk away, come back after the cooldown: it works again
+H.P(1).pos = V(7, 0, H.P(1).pos[3])
+T.frames(30)
+H.P(1).pos = V(9.6, 0, H.P(1).pos[3])
+H.P(1).vel = V(2, 0, 0)
+T.frames(2)
+T.check(pr().passN == passes0 + 2, "after stepping away the portal works again")
+-- bodies get their own cooldown and lock
+local bx = H.addBody { pos = V(0.2, 1.7, -9.5), mass = 10, vel = V(0, 0, -2) }
+H.gravity = V(0, 0, 0)
+local p0 = pr().passN
+for i = 1, 120 do
+	local bb = H.bodies[bx]
+	if bb.pos[1] > 8 then bb.vel = V(0, 0, 0) end   -- it stops right in front of the exit
+	T.frames(1)
+end
+H.gravity = V(0, -10, 0)
+T.check(pr().passN - p0 == 1, "a body resting in the exit portal is not sent back (" .. (pr().passN - p0) .. " teleports)")
+T.check(srv().lock["b" .. bx] ~= nil, "the body stays locked until it leaves the exit portal")

@@ -103,3 +103,7 @@ Other scripts can drop a Singularity Grenade (the camera drone mod does) through
 write `level.singularity_grenade.req.<n>.x/y/z/vx/vy/vz` (floats) and `.owner` (int), then set
 `level.singularity_grenade.reqcount` to `n`. This mod spawns the grenade on its next tick without
 spending ammo and clears the keys. It sets `level.singularity_grenade.available = true` when loaded.
+
+## Multiplayer authority
+
+The grenade body is spawned by the server, so in `#version 2` only server code changes it: the glow (`SetShapeEmissiveScale`) is set on the server from the grenade phase and fuse; clients only read the body and add lights, particles, sounds and camera effects.

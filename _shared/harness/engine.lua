@@ -783,7 +783,6 @@ A.AttachCameraTo = function() end
 A.RequestFirstPerson = function() end
 A.RequestThirdPerson = function() end
 A.SetTimeScale = function(s)
-	if H.ctx == "server" then H.note("SetTimeScale called on server") end
 	if s < 0 or s > 2 then H.warn("SetTimeScale out of range 0-2: " .. s) end
 	H.timeScale = s
 end
@@ -1176,6 +1175,13 @@ H.MUTATING = {
 }
 H.authorityErrors = 0
 
+-- Functions that only work from server code in #version 2. Calls from client code
+-- are silently ignored by the game, so the harness reports them as errors.
+-- Evidence: SetTimeScale - the script_defs example uses server.tick and the game's
+-- own v2 script level/cullington/script/truxterminator.lua calls it from server code.
+H.SERVER_ONLY = { SetTimeScale = true }
+H.serverOnlyErrors = 0
+
 H.allowedSides = {}
 function H.wrapAll()
 	local W = {}
@@ -1204,6 +1210,11 @@ function H.wrapAll()
 			if side then side[name] = (side[name] or 0) + 1 end
 			if isUi and not H.inDraw and name ~= "UiGetLanguage" then
 				err(name .. " called outside draw callback")
+			end
+			if H.SERVER_ONLY[name] and H.ctx == "client" then
+				H.serverOnlyErrors = H.serverOnlyErrors + 1
+				err(name .. " called from client code: server-only in #version 2, the game ignores it")
+				return
 			end
 			local mut = H.MUTATING[name]
 			if mut and H.ctx == "client" then

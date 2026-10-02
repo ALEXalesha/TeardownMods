@@ -113,3 +113,7 @@ T.check(H.reg["savegame.mod.toggle"] == true, "options: toggle mode")
 H.uiClicks["Reset to defaults"] = true
 T.drawOptions(1)
 T.check(H.reg["savegame.mod.key"] == "h" and H.reg["savegame.mod.toggle"] == false, "options: reset")
+
+-- the time scale is applied by server code only (SetTimeScale is server-only in #version 2)
+T.check((H.sideCalls.server.SetTimeScale or 0) > 0, "SetTimeScale called from server code")
+T.check((H.sideCalls.client.SetTimeScale or 0) == 0, "SetTimeScale never called from client code")

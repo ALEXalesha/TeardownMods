@@ -12,7 +12,7 @@ A deployable quadcopter flown from its own camera. Russian: [README.ru.md](READM
 | P | | photo mode: hides the HUD and the static |
 | R | pack the drone up (within 4 m), bombs and battery refill | |
 
-- Own voxel model with four rotor shapes spinning on the client (rotor collision is switched off), blinking LEDs, a light under the body, a hum loop whose volume and pitch follow the thrust.
+- Own voxel model with four rotor shapes spinning (animated by the server, because the drone body is server-authored and clients may only read it; rotor collision is switched off), blinking LEDs, a light under the body, a hum loop whose volume and pitch follow the thrust.
 - Flight: velocity tracking with `ApplyBodyImpulse` plus gravity compensation, upright and tilted into motion with `ConstrainOrientation`. With no input it holds position.
 - Battery (3 min by default, more drain at high thrust): when empty the motors stop and the drone falls.
 - Signal range (150 m by default): from 75% of the range the picture gets static (noise and scan lines, static sound); past the range the link is lost, input is ignored and the drone slowly descends.

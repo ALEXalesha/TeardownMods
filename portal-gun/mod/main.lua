@@ -17,8 +17,9 @@
 local TOOL = "portalgun"
 local COLORS = { { 0.25, 0.6, 1.0 }, { 1.0, 0.55, 0.12 } }
 local SIZES = { { 0.45, 0.8 }, { 0.6, 1.05 }, { 0.8, 1.35 } }   -- half width, half height
-local PLAYER_COOLDOWN = 0.4
-local BODY_COOLDOWN = 0.5
+local PLAYER_COOLDOWN = 1.0   -- seconds after a teleport before the same player can teleport again
+local BODY_COOLDOWN = 1.0     -- the same for every body, tracked per body
+local LEAVE_DIST = 1.0        -- and it must first move this far away from the exit portal
 local CHECK_INTERVAL = 0.25
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
@@ -93,6 +94,7 @@ function server.init()
 	RegisterTool(TOOL, tr("Portal Gun", "Портальная пушка"), "MOD/prefab/tool.xml", 6)
 	server.players = {}
 	server.cool = {}       -- body/player key -> time left
+	server.lock = {}       -- body/player key -> exit portal it must leave first
 	shared.pairs = {}
 end
 
@@ -274,19 +276,39 @@ local function playerProbe(po, p)
 	return best
 end
 
+-- an entity that came out of a portal must step away from it before that portal can take it again
+local function locked(key, a)
+	local lk = server.lock[key]
+	return lk ~= nil and lk == a
+end
+
+local function releaseLock(key, point)
+	local lk = server.lock[key]
+	if lk then
+		local x, y, z = toLocal(lk, point)
+		if not lk.active or z > LEAVE_DIST or math.abs(x) > lk.hw + 0.5 or math.abs(y) > lk.hh + 0.8 then
+			server.lock[key] = nil
+		end
+	end
+end
+
 function server.teleportPlayer(p)
-	if server.cool["p" .. p] then return end
+	local key = "p" .. p
+	releaseLock(key, VecAdd(GetPlayerTransform(p).pos, Vec(0, 0.9, 0)))
+	if server.cool[key] then return end
 	for owner, pr in pairs(shared.pairs) do
 		if pr[1].active and pr[2].active then
 			for i = 1, 2 do
 				local a, b = pr[i], pr[3 - i]
-				local pb = playerProbe(a, p)
-				local v = GetPlayerVelocity(p)
-				local vn = VecDot(v, Vec(a.nx, a.ny, a.nz))
-				local yMargin = (math.abs(a.ny) > 0.7) and 0 or 0.3
-				if pb.z < 0.5 and pb.z > -0.6 and math.abs(pb.x) < a.hw and math.abs(pb.y) < a.hh + yMargin and vn <= 0.2 then
-					server.doTeleportPlayer(p, a, b, pb, v, owner, pr)
-					return
+				if not locked(key, a) then
+					local pb = playerProbe(a, p)
+					local v = GetPlayerVelocity(p)
+					local vn = VecDot(v, Vec(a.nx, a.ny, a.nz))
+					local yMargin = (math.abs(a.ny) > 0.7) and 0 or 0.3
+					if pb.z < 0.5 and pb.z > -0.6 and math.abs(pb.x) < a.hw and math.abs(pb.y) < a.hh + yMargin and vn <= 0.2 then
+						server.doTeleportPlayer(p, a, b, pb, v, owner, pr)
+						return
+					end
 				end
 			end
 		end
@@ -311,6 +333,7 @@ function server.doTeleportPlayer(p, a, b, pb, v, owner, pr)
 	SetPlayerTransformWithPitch(Transform(feet, QuatEuler(pitch, yaw, 0)), p)
 	SetPlayerVelocity(newVel, p)
 	server.cool["p" .. p] = PLAYER_COOLDOWN
+	server.lock["p" .. p] = b
 	pr.passN = pr.passN + 1
 	pr.px, pr.py, pr.pz = b.x, b.y, b.z
 end
@@ -334,7 +357,9 @@ function server.teleportBodies(pr, a, b, s, dt)
 	local list = QueryAabbBodies(VecSub(c, Vec(r, r, r)), VecAdd(c, Vec(r, r, r)))
 	for i = 1, math.min(#list, 24) do
 		local body = list[i]
-		if not server.cool["b" .. body] and GetBodyPlayer(body) == 0 and GetBodyVehicle(body) == 0 then
+		local key = "b" .. body
+		if server.lock[key] then releaseLock(key, GetBodyTransform(body).pos) end
+		if not server.cool[key] and not locked(key, a) and GetBodyPlayer(body) == 0 and GetBodyVehicle(body) == 0 then
 			local mass = GetBodyMass(body)
 			if mass > 0 and mass <= s.massLimit then
 				local bt = GetBodyTransform(body)
@@ -364,7 +389,8 @@ function server.teleportBodies(pr, a, b, s, dt)
 					SetBodyTransform(body, Transform(newPos, newRot))
 					SetBodyVelocity(body, newVel)
 					SetBodyAngularVelocity(body, mapVec(a, b, GetBodyAngularVelocity(body)))
-					server.cool["b" .. body] = BODY_COOLDOWN
+					server.cool[key] = BODY_COOLDOWN
+					server.lock[key] = b
 					pr.passN = pr.passN + 1
 					pr.px, pr.py, pr.pz = b.x, b.y, b.z
 				end

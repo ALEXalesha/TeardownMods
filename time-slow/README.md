@@ -12,13 +12,13 @@ Hold a key to slow the world down. Russian: [README.ru.md](README.ru.md).
 
 ## What the API allows
 
-- `SetTimeScale(scale)` takes 0..2 and must be called every frame from tick. The game docs say that since 1.5 it works
+- `SetTimeScale(scale)` is **server-only** in `#version 2` (the `script_defs.lua` example uses `server.tick`, and the game's own v2 scripts call it from server code; called from client code it is silently ignored). The client computes the ramp in real time and sends the wanted scale with `ServerCall`; the server calls `SetTimeScale` every tick (with several players the slowest request wins). It takes 0..2 and lasts one frame. The game docs say that since 1.5 it works
   through rendering interpolation and does not change physics behaviour. This mod never goes below 0.1.
 - There is no per-entity time scale, so the player is slowed too. The "faster walking" option raises
   `SetPlayerWalkingSpeed` by 1/scale (up to x4) on the server. That is an approximation: jumping, falling,
   looking around and tools stay slowed.
 - World sound is pitched down by the engine itself; there is no API for a low-pass on world sounds, only on music.
-- In multiplayer the time scale is a client-side call; whether the engine applies it to everyone is untested.
+- In multiplayer the time scale is global: when any player slows time, everybody sees it.
 
 ## Options
 

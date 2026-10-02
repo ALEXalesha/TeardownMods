@@ -83,3 +83,7 @@ cd ..\singularity-grenade
 записать `level.singularity_grenade.req.<n>.x/y/z/vx/vy/vz` (float) и `.owner` (int), затем поставить
 `level.singularity_grenade.reqcount` = `n`. Мод создаст гранату на следующем тике без траты боезапаса и
 сотрёт ключи. Когда мод загружен, он ставит `level.singularity_grenade.available = true`.
+
+## Кто чем управляет
+
+Тело гранаты создаёт сервер, поэтому в `#version 2` менять его может только серверный код: свечение (`SetShapeEmissiveScale`) ставит сервер по фазе и запалу; клиенты тело только читают и добавляют свет, частицы, звуки и эффекты камеры.

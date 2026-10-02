@@ -20,3 +20,15 @@ for _ in pairs(H.MUTATING) do n = n + 1 end
 T.check(n >= 40, "mutating list covers " .. n .. " functions")
 -- the expected errors are part of this self-test, clear them so the run reports OK
 H.errors = {}
+-- server-only functions
+T.check(H.SERVER_ONLY.SetTimeScale == true, "SetTimeScale is listed as server-only")
+local before = H.serverOnlyErrors
+H.ctx = "client"
+H.W.SetTimeScale(0.5)
+H.ctx = "scenario"
+T.check(H.serverOnlyErrors == before + 1 and H.timeScale == 1, "client SetTimeScale is reported and has no effect")
+H.ctx = "server"
+H.W.SetTimeScale(0.5)
+H.ctx = "scenario"
+T.check(H.timeScale == 0.5, "server SetTimeScale works")
+H.errors = {}

@@ -5,7 +5,8 @@
 -- post-processing properties, enter/exit whooshes, heartbeat, optional energy
 -- meter, optional walking-speed compensation for the player.
 --
--- SetTimeScale must be called every frame and accepts 0..2; since Teardown 1.5
+-- SetTimeScale is server-only in #version 2 (script_defs example and the game's
+-- own scripts call it from server code), must be called every frame and accepts 0..2; since Teardown 1.5
 -- it slows everything through rendering interpolation without changing physics
 -- behaviour. It slows the player too: the API has no per-entity time, so
 -- "player at normal speed" can only be approximated (walking speed boost).
@@ -44,6 +45,26 @@ end
 
 function server.init()
 	server.baseWalk = {}
+	server.scale = {}      -- player -> requested time scale
+end
+
+-- the client computes the ramp (in real time) and sends the scale it wants
+function server.setScale(p, scale)
+	if scale >= 0.999 then
+		server.scale[p] = nil
+	else
+		server.scale[p] = clamp(scale, 0.05, 1)
+	end
+end
+
+-- SetTimeScale only works from server code in #version 2 and lasts one frame,
+-- so it is applied here every tick. With several players the slowest request wins.
+function server.tick(dt)
+	local s = 1
+	for p, v in pairs(server.scale) do
+		if IsPlayerValid(p) then s = math.min(s, v) else server.scale[p] = nil end
+	end
+	if s < 0.999 then SetTimeScale(s) end
 end
 
 function server.walk(p, factor)
@@ -179,8 +200,12 @@ function client.tick(dt)
 	local scale = 1 - k * (1 - target)
 	client.scale = scale
 
+	-- the time scale itself is set on the server (SetTimeScale is server-only in #version 2)
+	if math.abs(scale - (client.sentScale or 1)) > 0.004 or (scale >= 0.999 and (client.sentScale or 1) < 0.999) then
+		ServerCall("server.setScale", GetLocalPlayer(), scale)
+		client.sentScale = scale
+	end
 	if client.k > 0.0005 then
-		SetTimeScale(scale)
 		if not client.orig then captureOriginal() end
 		applyTint(k, s.tint)
 		SetMusicLowPass(0.85 * k)

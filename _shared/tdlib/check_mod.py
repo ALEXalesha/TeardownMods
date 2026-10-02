@@ -95,6 +95,29 @@ def main() -> int:
                 for p in re.findall(r"MOD/[A-Za-z0-9_./-]+\.(?:vox|xml|ogg|png|jpg|lua)", raw):
                     if not os.path.isfile(os.path.join(mod, p[4:])):
                         problems.append(f"{os.path.relpath(path, mod)}: missing file {p}")
+    # world-spawned vox files must use real material ranges (not reserved/unphysical)
+    from palette import material_of
+    from voxio import read_vox
+    spawned = set()
+    for path in lua_files:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+        for xml in re.findall(r"<body.*?</body>", raw):
+            for v in re.findall(r"vox file=['\"](MOD/[^'\"]+)['\"]", xml):
+                spawned.add(v)
+    for v in sorted(spawned):
+        full = os.path.join(mod, v[4:])
+        if not os.path.isfile(full):
+            continue
+        vf = read_vox(full)
+        mats = {}
+        for m in vf.models:
+            for idx in m.voxels.values():
+                mats.setdefault(material_of(idx), set()).add(idx)
+        bad = {k: sorted(x) for k, x in mats.items() if k in ("reserved", "unphysical", "none")}
+        print(f"  spawned {v}: " + ", ".join(f"{k} {min(x)}-{max(x)}" for k, x in sorted(mats.items())))
+        if bad:
+            problems.append(f"{v}: world-spawned vox uses non-material palette indices {bad}")
     info = os.path.join(mod, "info.txt")
     if not os.path.isfile(info):
         problems.append("info.txt missing")

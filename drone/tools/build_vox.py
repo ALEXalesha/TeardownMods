@@ -11,8 +11,8 @@ from voxio import Model, VoxFile, write_vox, read_vox  # noqa: E402
 from prefab import tool_prefab  # noqa: E402
 
 MOD = os.path.join(HERE, "..", "mod")
-SHELL, SHELL_DK, ARM, MOTOR, ROTOR, LENS, RED, GREEN, WHITE, BATT = 137, 138, 139, 140, 141, 193, 194, 195, 196, 142
-BOMB, BOMB_DK, FIN = 153, 154, 155
+SHELL, SHELL_DK, ARM, MOTOR, ROTOR, LENS, RED, GREEN, WHITE, BATT = 137, 138, 139, 140, 141, 147, 148, 149, 150, 142
+BOMB, BOMB_DK, FIN = 121, 122, 123
 CTRL, CTRL_DK, STICK, SCREEN = 129, 130, 131, 197
 
 

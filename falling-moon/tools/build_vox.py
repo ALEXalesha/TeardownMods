@@ -13,7 +13,7 @@ from prefab import tool_prefab  # noqa: E402
 
 MOD = os.path.join(HERE, "..", "mod")
 BRASS, BRASS_DK, LEATHER, LENS = 153, 154, 155, 193
-ROCK, ROCK_DK, ROCK_LT, GLOW = 41, 42, 43, 194
+ROCK, ROCK_DK, ROCK_LT, GLOW = 41, 42, 43, 50
 
 
 def palette(vf):

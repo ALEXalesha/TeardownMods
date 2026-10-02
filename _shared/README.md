@@ -9,7 +9,8 @@ Helpers used by every mod of this repository (`<mod>/tools`).
 | `tdlib/render.py` | isometric voxel renderer for previews and icons |
 | `tdlib/art.py` | preview helpers: gradients, glow, text, voxel debris, JPEG under 1 MB, UI textures |
 | `tdlib/apidoc.py` | look up a function in the game's `data/script_defs.lua` |
-| `tdlib/check_mod.py` | static mod check: Lua 5.1 compile, API names against script_defs, `MOD/` paths, info.txt |
+| `tdlib/palette.py` | Teardown material ranges by palette index, read from the game's annotated `data/built-in/palette.vox` (NOTE chunk): glass 1-8, grass 9-24, dirt 25-40, rock 41-56, wood 57-72, concrete 73-88, brick 89-104, plaster 105-120, weak metal 121-136, heavy metal 137-152, plastic 153-168, hard metal 169-176, hard masonry 177-184, reserved 185-224, unphysical 225-240, reserved 241-255. `python palette.py` re-checks them against the game file |
+| `tdlib/check_mod.py` | static mod check: Lua 5.1 compile, API names against script_defs, `MOD/` paths, info.txt, and that world-spawned vox files use real material indices (not reserved/unphysical) |
 | `harness/engine.lua` | fake Teardown engine (registry, bodies, players, tools, queries, simple physics, UI) |
 | `harness/driver.lua` | frame loop (server/client callbacks, shared sync, ServerCall/ClientCall), scenario API `T` |
 | `harness/run.py` | runs a scenario twice: one VM (host) and split server/client VMs |

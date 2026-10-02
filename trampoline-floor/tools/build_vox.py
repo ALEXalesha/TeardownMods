@@ -10,7 +10,7 @@ from voxio import Model, VoxFile, write_vox, read_vox  # noqa: E402
 from prefab import tool_prefab  # noqa: E402
 
 MOD = os.path.join(HERE, "..", "mod")
-FRAME, FRAME_DK, SPRING, MEMBRANE, STRIPE, LIGHT = 137, 138, 153, 139, 129, 193
+FRAME, FRAME_DK, SPRING, MEMBRANE, STRIPE, LIGHT = 137, 138, 124, 139, 129, 140
 N = 30          # pad side in voxels (3 m at scale 1)
 
 

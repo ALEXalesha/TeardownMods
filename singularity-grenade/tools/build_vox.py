@@ -5,10 +5,10 @@ One file, three shapes (Teardown keeps them as separate shapes of one body):
   ringx - brass gimbal ring standing in the YZ plane
   ringz - brass gimbal ring lying flat (XY plane in MagicaVoxel = horizontal)
 
-Palette indices follow the ranges the built-in tool models use
-(121-168 metal, 185-200 metal / emissive) so Teardown treats the grenade as
-metal: the singularity's own MakeHole calls (soft materials only) cannot
-destroy it.
+Palette indices are in Teardown's heavy-metal range (137-152, from the game's
+annotated palette data/built-in/palette.vox), so the grenade is metal: the
+singularity's own MakeHole calls (soft materials only) cannot destroy it.
+The glowing parts are heavy metal too, with an emissive MATL.
 """
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from voxio import Model, VoxFile, write_vox, read_vox  # noqa: E402
 OUT = os.path.join(HERE, "..", "mod", "vox")
 
 # palette slots
-BRASS, BRASS_DK, BRASS_HI = 153, 154, 155
-GUN, GUN_DK, GUN_HI = 158, 159, 160
-BUTTON = 185
-LIGHT_CYAN, CORE_OUT, CORE_IN = 193, 194, 195
+BRASS, BRASS_DK, BRASS_HI = 141, 142, 143
+GUN, GUN_DK, GUN_HI = 145, 146, 147
+BUTTON = 148
+LIGHT_CYAN, CORE_OUT, CORE_IN = 149, 150, 151
 
 
 def make_palette(vf: VoxFile) -> None:

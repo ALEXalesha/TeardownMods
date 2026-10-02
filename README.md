@@ -4,15 +4,18 @@ A collection of Teardown 2.x mods (scripting API `#version 2`: `server` / `clien
 Every mod has its own folder with the built mod in `mod/`, generators in `tools/`, offline tests in `tests/`
 and its own README in English and Russian. Russian version of this page: [README.ru.md](README.ru.md).
 
+<!-- mods -->
 | Folder | Mod | What it is |
 |---|---|---|
-| [singularity-grenade](singularity-grenade) | Singularity Grenade | throwable grenade that opens into a short-lived singularity |
-| [earthquake](earthquake) | Earthquake | seismic detonator, quakes from weak to catastrophic, aftershocks |
-| [mover](mover) | Mover | gizmo gun: grab, rotate, snap, freeze, clone, voxel resample, undo |
-| [time-slow](time-slow) | Time Slow | hold a key for slow motion with presets, tint and an energy meter |
-| [cutter](cutter) | Cutter | angle grinder that cuts straight kerfs through walls and vehicles |
+| [cutter](cutter) | Cutter | Angle grinder: cut straight kerfs through walls and vehicles. |
+| [drone](drone) | Camera Drone | Deployable camera drone with bomb drop. |
+| [earthquake](earthquake) | Earthquake | Seismic detonator: earthquakes from weak to catastrophic. |
+| [mover](mover) | Mover | Gizmo gun: grab, rotate, freeze, clone, scale and undo. |
+| [singularity-grenade](singularity-grenade) | Singularity Grenade | A throwable gravity grenade that opens into a short-lived singularity. |
+| [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
+<!-- /mods -->
 
-More mods are in progress (drone, replay mod replay, tornado, portal gun, volcano, tsunami,
+More mods are in progress (replay mod replay, tornado, portal gun, volcano, tsunami,
 trampoline floor, gravity, falling moon, vehicle remote control, telekinesis).
 
 ## Shared tooling

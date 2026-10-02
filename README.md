@@ -15,7 +15,7 @@ and its own README in English and Russian. Russian version of this page: [README
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
 <!-- /mods -->
 
-More mods are in progress (replay mod replay, tornado, portal gun, volcano, tsunami,
+More mods are in progress (tornado, portal gun, volcano, tsunami,
 trampoline floor, gravity, falling moon, vehicle remote control, telekinesis).
 
 ## Shared tooling

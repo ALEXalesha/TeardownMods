@@ -113,13 +113,21 @@ function server.deploy(p)
 	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then body = ents[i] break end end
 	if body == 0 then return end
 	local shapes = GetBodyShapes(body)
+	local rotors, hull = {}, 0
 	for i = 1, #shapes do
-		if isRotor(shapes[i]) then SetShapeCollisionFilter(shapes[i], 0, 0) end
+		if isRotor(shapes[i]) then
+			SetShapeCollisionFilter(shapes[i], 0, 0)
+			local sx, sy, sz, vs = GetShapeSize(shapes[i])
+			rotors[#rotors + 1] = { shape = shapes[i], t0 = GetShapeLocalTransform(shapes[i]), center = Vec(sx * vs * 0.5, 0, sz * vs * 0.5) }
+		elseif hull == 0 then
+			hull = shapes[i]
+		end
 	end
 	SetTag(body, "camera_drone")
 	server.d[p] = {
 		body = body, piloting = true, input = { f = 0, s = 0, u = 0 }, yaw = yaw, battery = 1,
 		bombs = s.bombs, prevVel = Vec(0, 0, 0), s = s, age = 0, lowWarned = false,
+		rotors = rotors, hull = hull, rotorAngle = 0, ledOn = nil,
 	}
 	local st = sd(p)
 	st.body = body
@@ -285,8 +293,28 @@ function server.fly(p, d, dt)
 	end
 	st.thrust = motors and clamp(VecLength(acc) / 20, 0, 1) or 0
 	st.yaw = d.yaw
+	server.animate(d, st, dt)
 	-- predicted velocity after our impulse, so the crash test ignores our own push
 	d.prevVel = VecAdd(VecAdd(vel, VecScale(acc, dt)), Vec(0, -10 * dt, 0))
+end
+
+-- Rotor spin and LED blink. The drone body is spawned by the server, so in
+-- #version 2 only server code may change its shapes (clients may only read them).
+function server.animate(d, st, dt)
+	d.rotorAngle = (d.rotorAngle + dt * (900 + 1500 * st.thrust)) % 360
+	for i = 1, #d.rotors do
+		local e = d.rotors[i]
+		if IsHandleValid(e.shape) then
+			local dir = (i % 2 == 0) and 1 or -1
+			local pivot = Transform(e.center, QuatAxisAngle(Vec(0, 1, 0), d.rotorAngle * dir))
+			SetShapeLocalTransform(e.shape, TransformToParentTransform(e.t0, TransformToParentTransform(pivot, Transform(VecScale(e.center, -1)))))
+		end
+	end
+	local on = math.floor(d.age * 2) % 2 == 0
+	if d.hull ~= 0 and on ~= d.ledOn and IsHandleValid(d.hull) then
+		d.ledOn = on
+		SetShapeEmissiveScale(d.hull, on and 1.2 or 0.3)
+	end
 end
 
 function server.updateBombs(dt)
@@ -325,8 +353,6 @@ function client.init()
 	client.camPitch = -10
 	client.sent = { f = 0, s = 0, u = 0, yaw = 0, t = 0 }
 	client.photo = false
-	client.rotorAngle = 0
-	client.rotors = {}
 	client.blink = 0
 	client.lowBeeped = false
 	client.weakBeeped = false
@@ -439,34 +465,10 @@ function client.pilot(st, s, dt)
 end
 
 function client.animateDrone(st, dt)
-	local b = st.body
-	local bt = GetBodyTransform(b)
+	-- sound and light only: rotors and LEDs are animated on the server (server.animate)
+	local bt = GetBodyTransform(st.body)
 	PlayLoop(client.hum, bt.pos, 0.3 + 0.5 * st.thrust, true, 0.8 + 0.6 * st.thrust)
 	PointLight(VecAdd(bt.pos, Vec(0, -0.3, 0)), 1, 0.95, 0.85, 0.6)
-	local r = client.rotors[b]
-	if not r then
-		r = { shapes = {} }
-		local shapes = GetBodyShapes(b)
-		for i = 1, #shapes do
-			if isRotor(shapes[i]) then
-				local sx, sy, sz, vs = GetShapeSize(shapes[i])
-				r.shapes[#r.shapes + 1] = { shape = shapes[i], t0 = GetShapeLocalTransform(shapes[i]), center = Vec(sx * vs * 0.5, 0, sz * vs * 0.5) }
-			else
-				r.body = shapes[i]
-			end
-		end
-		client.rotors[b] = r
-	end
-	client.rotorAngle = client.rotorAngle + dt * (900 + 1500 * st.thrust)
-	for i = 1, #r.shapes do
-		local e = r.shapes[i]
-		local dir = (i % 2 == 0) and 1 or -1
-		local pivot = Transform(e.center, QuatAxisAngle(Vec(0, 1, 0), client.rotorAngle * dir))
-		SetShapeLocalTransform(e.shape, TransformToParentTransform(e.t0, TransformToParentTransform(pivot, Transform(VecScale(e.center, -1)))))
-	end
-	if r.body then
-		SetShapeEmissiveScale(r.body, (math.floor(client.blink * 2) % 2 == 0) and 1.2 or 0.3)
-	end
 end
 
 -- crash sparks, at a fixed rate

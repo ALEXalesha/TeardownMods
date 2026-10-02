@@ -258,7 +258,17 @@ H.fires = 0
 H.paints = 0
 H.toolsRegistered = {}
 
-local function newHandle() H.nextHandle = H.nextHandle + 1; return H.nextHandle end
+-- Authority model (Teardown #version 2): every entity is authored by the side that
+-- created it. Level entities and everything spawned from server code are
+-- server-authored; client scripts may read them but any mutating call raises
+-- "invalid attempt to access server authored entity from client script".
+-- Tool bodies are local to the client that renders them.
+H.owner = {}
+local function newHandle()
+	H.nextHandle = H.nextHandle + 1
+	H.owner[H.nextHandle] = (H.ctx == "client") and "client" or "server"
+	return H.nextHandle
+end
 
 function H.addBody(o)
 	local h = newHandle()
@@ -677,19 +687,32 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			out[#out + 1] = cur
 			H.bodies[cur].spawnedXml = content
 		elseif tag == "vox" or tag == "voxbox" then
+			local sizes = nil
+			local scale = tonumber(parseAttr(attrs, "scale") or "1") or 1
 			if tag == "vox" then
 				local f = parseAttr(attrs, "file")
-				if f then checkFile(f, "Spawn vox") end
+				if f and checkFile(f, "Spawn vox") and H.voxSizes then sizes = H.voxSizes(resolvePath(f)) end
+			else
+				local sz = parseAttr(attrs, "size")
+				if sz then
+					local a, b, c = sz:match("(%S+)%s+(%S+)%s+(%S+)")
+					sizes = { { tonumber(a), tonumber(b), tonumber(c) } }
+				end
 			end
 			if not cur then
 				cur = H.addBody { pos = transform.pos, rot = transform.rot, dynamic = false, shapes = 0 }
 				if not allowStatic then H.warn("Spawn: shape without dynamic body and allowStatic=false is dropped by the game") end
 				out[#out + 1] = cur
 			end
-			local sh = newHandle()
-			H.shapes[sh] = { handle = sh, body = cur, local_ = A.Transform(), material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255 }
-			table.insert(H.bodies[cur].shapes, sh)
-			out[#out + 1] = sh
+			-- one shape per model in the vox file, with its real size
+			local n = sizes and #sizes or 1
+			for k = 1, math.max(1, n) do
+				local sh = newHandle()
+				local size = sizes and sizes[k] and { sizes[k][1], sizes[k][2], sizes[k][3] } or nil
+				H.shapes[sh] = { handle = sh, body = cur, local_ = A.Transform(), material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = 0.1 * scale }
+				table.insert(H.bodies[cur].shapes, sh)
+				out[#out + 1] = sh
+			end
 			local tags = parseAttr(attrs, "tags")
 			if tags then for t in tags:gmatch("%S+") do local k, v = t:match("([^=]+)=?(.*)"); H.shapes[sh].tags[k] = v end end
 		elseif tag == "light" then
@@ -950,7 +973,13 @@ A.RegisterTool = function(id, name, file, group)
 				local x, y, z = pos:match("(%S+)%s+(%S+)%s+(%S+)")
 				if n then locs[n] = A.Transform(V(tonumber(x), tonumber(y), tonumber(z))) end
 			end
-			for vf in c:gmatch("<vox[^>]-file%s*=%s*[\"']([^\"']+)[\"']") do checkFile(vf, "tool prefab vox") end
+			for vf in c:gmatch("<vox[^>]-file%s*=%s*[\"']([^\"']+)[\"']") do
+				if checkFile(vf, "tool prefab vox") and H.voxSizes then
+					H.toolsRegistered[id].voxSizes = H.voxSizes(resolvePath(vf))
+					local sc = c:match("<vox[^>]-scale%s*=%s*[\"']([^\"']+)[\"']")
+					H.toolsRegistered[id].voxScale = tonumber(sc or "1") or 1
+				end
+			end
 			H.toolsRegistered[id].locations = locs
 		end
 	end
@@ -972,8 +1001,18 @@ local function toolBody(pid)
 	local p = P(pid)
 	if not H.toolsRegistered[p.tool] then return 0 end
 	if p.toolBody == 0 or p.toolBodyTool ~= p.tool then
-		p.toolBody = H.addBody { pos = A.VecAdd(p.pos, V(0.3, 1.3, -0.5)), dynamic = false, shapes = 3, isTool = true, material = "metal" }
+		local reg = H.toolsRegistered[p.tool]
+		local sizes = reg and reg.voxSizes
+		p.toolBody = H.addBody { pos = A.VecAdd(p.pos, V(0.3, 1.3, -0.5)), dynamic = false, shapes = sizes and #sizes or 3, isTool = true, material = "metal" }
+		if sizes then
+			for k, sh in ipairs(H.bodies[p.toolBody].shapes) do
+				H.shapes[sh].size = { sizes[k][1], sizes[k][2], sizes[k][3] }
+				H.shapes[sh].voxelSize = 0.1 * (reg.voxScale or 1)
+			end
+		end
 		p.toolBodyTool = p.tool
+		H.owner[p.toolBody] = "client"
+		for _, sh in ipairs(H.bodies[p.toolBody].shapes) do H.owner[sh] = "client" end
 	end
 	return p.toolBody
 end
@@ -1120,6 +1159,23 @@ local function defaultReturn(t)
 	return defaultFor[t]
 end
 
+-- mutating API -> list of argument positions that hold entity handles
+H.MUTATING = {
+	SetBodyTransform = { 1 }, SetBodyDynamic = { 1 }, SetBodyVelocity = { 1 }, SetBodyAngularVelocity = { 1 },
+	SetBodyGravityScale = { 1 }, SetBodyActive = { 1 }, ApplyBodyImpulse = { 1 },
+	ConstrainVelocity = { 1, 2 }, ConstrainAngularVelocity = { 1, 2 }, ConstrainPosition = { 1, 2 }, ConstrainOrientation = { 1, 2 },
+	SetShapeLocalTransform = { 1 }, SetShapeEmissiveScale = { 1 }, SetShapeDensity = { 1 }, SetShapeCollisionFilter = { 1 },
+	SetShapeBody = { 1, 2 }, CreateShape = { 1 }, ClearShape = { 1 }, ResizeShape = { 1 }, CopyShapeContent = { 2 },
+	CopyShapePalette = { 2 }, DrawShapeLine = { 1 }, DrawShapeBox = { 1 }, ExtrudeShape = { 1 }, TrimShape = { 1 },
+	SplitShape = { 1 }, MergeShape = { 1 },
+	SetTag = { 1 }, RemoveTag = { 1 }, SetDescription = { 1 }, Delete = { 1 }, SetProperty = { 1 },
+	SetJointMotor = { 1 }, SetJointMotorTarget = { 1 }, DetachJointFromShape = { 1, 2 }, BreakRope = { 1 },
+	SetLightEnabled = { 1 }, SetLightColor = { 1 }, SetLightIntensity = { 1 },
+	SetScreenEnabled = { 1 }, SetTriggerTransform = { 1 }, DriveVehicle = { 1 }, SetVehicleHealth = { 1 }, SetVehicleParam = { 1 },
+	SetAnimatorTransform = { 1 }, MakeRagdoll = { 1 }, UnRagdoll = { 1 },
+}
+H.authorityErrors = 0
+
 H.allowedSides = {}
 function H.wrapAll()
 	local W = {}
@@ -1148,6 +1204,17 @@ function H.wrapAll()
 			if side then side[name] = (side[name] or 0) + 1 end
 			if isUi and not H.inDraw and name ~= "UiGetLanguage" then
 				err(name .. " called outside draw callback")
+			end
+			local mut = H.MUTATING[name]
+			if mut and H.ctx == "client" then
+				for _, ai in ipairs(mut) do
+					local hnd = args[ai]
+					if type(hnd) == "number" and hnd ~= 0 and H.owner[hnd] == "server" then
+						-- like the game: a script error that aborts the rest of the callback
+						H.authorityErrors = H.authorityErrors + 1
+						error("invalid attempt to access server authored entity from client script (" .. name .. " on " .. hnd .. ")", 2)
+					end
+				end
 			end
 			if not spec.varargs then
 				for i, p in ipairs(params) do
@@ -1232,8 +1299,9 @@ A.CreateShape = function(body, t, ref)
 	local b = H.bodies[body]
 	if not b then H.err("CreateShape on invalid body " .. tostring(body)) return 0 end
 	if type(ref) == "string" then H.checkFile(ref, "CreateShape") elseif not H.shapes[ref] then H.err("CreateShape: invalid reference shape " .. tostring(ref)) end
-	local sh = H.nextHandle + 1
-	H.nextHandle = sh
+	H.nextHandle = H.nextHandle + 1
+	local sh = H.nextHandle
+	H.owner[sh] = (H.ctx == "client") and "client" or "server"
 	local voxel = (type(ref) == "number" and H.shapes[ref] and H.shapes[ref].voxelSize) or 0.1
 	H.shapes[sh] = { handle = sh, body = body, local_ = A.TransformCopy(t), material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = { 1, 1, 1 }, voxels = 0, voxelSize = voxel }
 	table.insert(b.shapes, sh)

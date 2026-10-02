@@ -260,6 +260,15 @@ function server.update(dt)
 	end
 end
 
+-- Emissive glow of the grenade body. The body is spawned by the server, so in
+-- #version 2 only server code may change it (clients may only read it).
+function server.glow(g, scale)
+	if g.glow and math.abs(g.glow - scale) < 0.05 then return end
+	g.glow = scale
+	local shapes = GetBodyShapes(g.body)
+	for i = 1, #shapes do SetShapeEmissiveScale(shapes[i], scale) end
+end
+
 function server.remove(g)
 	server.grenades[g.id] = nil
 	shared.g[g.id] = nil
@@ -314,6 +323,13 @@ function server.updateGrenade(g, dt)
 		sg.x, sg.y, sg.z = pos[1], pos[2], pos[3]
 		sg.phase = g.phase
 		sg.fuse = g.fuse
+		-- blink faster as the fuse runs down (the client plays the matching beeps)
+		local blink = 0.4
+		if g.phase == "armed" then
+			local interval = clamp(g.fuse / 3, 0.08, 0.5)
+			blink = ((g.t % interval) < 0.06) and 1.6 or 0.4
+		end
+		server.glow(g, blink)
 	elseif g.phase == "open" or g.phase == "collapse" then
 		server.updateOpen(g, sg, dt)
 	elseif g.phase == "done" then
@@ -355,6 +371,7 @@ function server.updateOpen(g, sg, dt)
 		local bp = GetBodyTransform(g.body).pos
 		SetBodyVelocity(g.body, VecScale(VecSub(g.center, bp), 6))
 		SetBodyAngularVelocity(g.body, Vec(2, 6 + 16 * ramp, 3))
+		server.glow(g, 1 + 2 * ramp)
 	end
 
 	server.pullBodies(g, dt, mult, collapsing)
@@ -760,10 +777,7 @@ function client.tickGrenades(dt)
 				seen.blink = math.max(0, (seen.blink or 0) - dt * 8)
 			end
 			PointLight(pos, 0.6, 0.3, 1.0, 0.4 + 1.6 * blink)
-			if sg.body ~= 0 and IsHandleValid(sg.body) then
-				local shapes = GetBodyShapes(sg.body)
-				for i = 1, #shapes do SetShapeEmissiveScale(shapes[i], 0.4 + 1.2 * blink) end
-			end
+			-- the grenade body is server-authored: its glow is set on the server (server.glow)
 		elseif sg.phase == "open" or sg.phase == "collapse" then
 			local ramp = smoothstep(0, OPEN_RAMP, sg.t)
 			local prog = clamp(sg.t / sg.dur, 0, 1)
@@ -776,10 +790,6 @@ function client.tickGrenades(dt)
 				PointLight(center, 1.0, 0.8, 1.0, 10 * flicker)
 			else
 				PointLight(center, 0.55, 0.25, 1.0, (2 + 5 * ramp) * flicker)
-			end
-			if sg.body ~= 0 and IsHandleValid(sg.body) then
-				local shapes = GetBodyShapes(sg.body)
-				for i = 1, #shapes do SetShapeEmissiveScale(shapes[i], 1 + 2 * ramp) end
 			end
 			local de = VecLength(VecSub(eye.pos, center))
 			local k = clamp(1 - de / (sg.r * 2.2), 0, 1)

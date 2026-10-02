@@ -132,9 +132,19 @@ class Harness:
         H.readFile = lambda p: open(p, encoding="utf-8", errors="replace").read()
         H.split = split
         H.preprocess = lambda rel: preprocess(os.path.join(self.mod_dir, rel), self.mod_dir)
+        H.voxSizes = lambda path, *_: self._vox_sizes(path)
         self.lua.execute("H.wrapAll()")
         with open(os.path.join(HERE, "driver.lua"), encoding="utf-8") as f:
             self.lua.execute(f.read())
+
+    def _vox_sizes(self, full_path):
+        """Shape sizes of a .vox in Teardown axis order (MagicaVoxel x, z, y)."""
+        try:
+            from voxio import read_vox
+            vf = read_vox(full_path)
+        except Exception:
+            return None
+        return self._to_lua([[m.size[0], m.size[2], m.size[1]] for m in vf.models])
 
     def _to_lua(self, obj):
         if isinstance(obj, dict):

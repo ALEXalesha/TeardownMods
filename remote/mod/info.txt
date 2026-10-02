@@ -1,0 +1,10 @@
+name = Vehicle Remote
+en_name = Vehicle Remote
+ru_name = Радиоуправление
+author = Alexey
+en_description = An RC transmitter for any vehicle. Aim at a car and press LMB to drive it remotely while you stay where you are: W/S throttle and reverse, A/D steer, Space handbrake, V toggles the chase camera (mouse orbits it), Q lets go, LMB on another vehicle hops to it. The signal has a range: near the edge the picture gets static, past it the link is lost, the car brakes and is released. Uses the game's real driving function. Options: range, pick-up distance, chase camera, camera distance, freeze player, mouse sensitivity.
+ru_description = Пульт радиоуправления для любой машины. Наведите на машину и нажмите ЛКМ, чтобы ехать на ней дистанционно, оставаясь на месте: W/S газ и задний ход, A/D руль, Пробел ручник, V включает камеру за машиной (мышь её крутит), Q отпустить, ЛКМ по другой машине - пересесть на неё. У сигнала есть дальность: у края картинка шумит, дальше связь теряется, машина тормозит и отпускается. Используется настоящая функция вождения игры. Настройки: дальность, дистанция захвата, камера за машиной, дистанция камеры, тело игрока стоит, чувствительность мыши.
+description = Drive any vehicle remotely like an RC car. / Управляйте любой машиной как радиоуправляемой.
+tags = Tool
+preview = preview.jpg
+version = 2

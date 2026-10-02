@@ -12,13 +12,14 @@ and its own README in English and Russian. Russian version of this page: [README
 | [earthquake](earthquake) | Earthquake | Seismic detonator: earthquakes from weak to catastrophic. |
 | [mover](mover) | Mover | Gizmo gun: grab, rotate, freeze, clone, scale and undo. |
 | [portal-gun](portal-gun) | Portal Gun | Blue and orange portals for players and objects. |
+| [remote](remote) | Vehicle Remote | Drive any vehicle remotely like an RC car. |
 | [singularity-grenade](singularity-grenade) | Singularity Grenade | A throwable gravity grenade that opens into a short-lived singularity. |
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
 | [tornado](tornado) | Tornado | Spawn a wandering or steerable tornado. |
 <!-- /mods -->
 
 More mods are in progress (volcano, tsunami,
-trampoline floor, gravity, falling moon, vehicle remote control, telekinesis).
+trampoline floor, gravity, falling moon, telekinesis).
 
 ## Shared tooling
 

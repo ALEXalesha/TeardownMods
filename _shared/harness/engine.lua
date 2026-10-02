@@ -789,8 +789,13 @@ end
 A.GetTime = function() return H.time end
 A.GetTimeStep = function() return H.dt end
 A.GetFps = function() return 1 / H.dt end
-A.SetEnvironmentProperty = function() end
-A.GetEnvironmentProperty = function() return 0, 0, 0, 0 end
+H.env = { skyboxtint = { 1, 1, 1 }, fogColor = { 0.8, 0.8, 0.8 }, sunColorTint = { 1, 1, 1 }, exposure = { 1, 5 }, skyboxbrightness = { 1 } }
+A.SetEnvironmentProperty = function(name, a, b, c, d) H.env[name] = { a, b, c, d } end
+A.GetEnvironmentProperty = function(name)
+	local v = H.env[name]
+	if not v then return 0, 0, 0, 0 end
+	return v[1], v[2], v[3], v[4]
+end
 H.post = { saturation = { 1 }, colorbalance = { 1, 1, 1 }, brightness = { 1 }, gamma = { 1 }, bloom = { 1 } }
 A.SetPostProcessingProperty = function(name, a, b, c)
 	if not H.post[name] then H.warn("SetPostProcessingProperty: unknown property " .. tostring(name)) end
@@ -1180,7 +1185,8 @@ H.authorityErrors = 0
 -- Evidence: SetTimeScale - the script_defs example uses server.tick and the game's
 -- own v2 script level/cullington/script/truxterminator.lua calls it from server code.
 -- SetGravity - the script_defs example calls it from server.tick and it changes scene state.
-H.SERVER_ONLY = { SetTimeScale = true, SetGravity = true }
+-- SetEnvironmentProperty - the game's sandbox sets the weather from server.setWeather.
+H.SERVER_ONLY = { SetTimeScale = true, SetGravity = true, SetEnvironmentProperty = true }
 H.serverOnlyErrors = 0
 
 H.allowedSides = {}

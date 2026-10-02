@@ -10,6 +10,7 @@ and its own README in English and Russian. Russian version of this page: [README
 | [cutter](cutter) | Cutter | Angle grinder: cut straight kerfs through walls and vehicles. |
 | [drone](drone) | Camera Drone | Deployable camera drone with bomb drop. |
 | [earthquake](earthquake) | Earthquake | Seismic detonator: earthquakes from weak to catastrophic. |
+| [falling-moon](falling-moon) | Falling Moon | Call the moon down: countdown, red sky, impact and shockwave. |
 | [gravity](gravity) | Gravity Change | Switch the level gravity: Earth, Moon, Mars, zero-G, reverse, sideways. |
 | [mover](mover) | Mover | Gizmo gun: grab, rotate, freeze, clone, scale and undo. |
 | [portal-gun](portal-gun) | Portal Gun | Blue and orange portals for players and objects. |
@@ -21,7 +22,7 @@ and its own README in English and Russian. Russian version of this page: [README
 | [trampoline-floor](trampoline-floor) | Trampoline Floor | Bounce pads and a bouncy ground mode. |
 <!-- /mods -->
 
-More mods are in progress (volcano, tsunami, falling moon).
+More mods are in progress (volcano, tsunami).
 
 ## Shared tooling
 

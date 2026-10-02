@@ -189,7 +189,9 @@ def write_ogg(path: str, x: np.ndarray, quality: int = 5) -> None:
         wav = os.path.join(td, "s.wav")
         write_wav(wav, x)
         subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", wav, "-c:a", "libvorbis",
-                        "-q:a", str(quality), "-ac", "1", "-ar", str(SR), path], check=True)
+                        "-q:a", str(quality), "-ac", "1", "-ar", str(SR),
+                        # bit-exact output so rebuilding does not change committed files
+                        "-fflags", "+bitexact", "-flags:a", "+bitexact", "-serial_offset", "7", path], check=True)
 
 
 def probe(path: str) -> dict:

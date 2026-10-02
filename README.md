@@ -14,12 +14,13 @@ and its own README in English and Russian. Russian version of this page: [README
 | [portal-gun](portal-gun) | Portal Gun | Blue and orange portals for players and objects. |
 | [remote](remote) | Vehicle Remote | Drive any vehicle remotely like an RC car. |
 | [singularity-grenade](singularity-grenade) | Singularity Grenade | A throwable gravity grenade that opens into a short-lived singularity. |
+| [telekinesis](telekinesis) | Telekinesis | Lift several objects with your mind and throw them as a volley. |
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
 | [tornado](tornado) | Tornado | Spawn a wandering or steerable tornado. |
 <!-- /mods -->
 
 More mods are in progress (volcano, tsunami,
-trampoline floor, gravity, falling moon, telekinesis).
+trampoline floor, gravity, falling moon).
 
 ## Shared tooling
 

@@ -1,0 +1,39 @@
+# Tsunami (Teardown mod)
+
+Call a tsunami. Russian: [README.ru.md](README.ru.md).
+
+| Input | Action |
+|---|---|
+| LMB | call a tsunami from where you look (it comes towards you) |
+| RMB while it comes | call it off (the water runs back) |
+
+## What happens
+
+1. **Warning** (7 s): a siren, a flashing "TSUNAMI WARNING" with the distance and height of the wave; the wave rises 260 m away; water that exists in the level turns rough (`SetProperty` on the level's water entities: wave, motion and foam go up; the original values are read first and written back exactly at the end).
+2. **The wave**: a wall of water 400 m wide rolls in at the set speed (default 14 m/s), with a foam crest, spray and a roar coming from the nearest point of the front. Behind the steep 12 m front, 60 m of fast water, then the flood level. Everything below the water surface - loose objects, vehicles, the player - is dragged towards the flow speed and buoyed up (a strong lift in the crest). Along the front, near the players, weak structures give way: holes up to 2.9 m in soft materials (wood, glass, plaster), small ones in concrete and brick, none in hard materials.
+3. **Backwash** (9 s): the flow turns and pulls things back a little while the flood drains away.
+
+## What is real and what is an effect
+
+Teardown's water volumes cannot be raised by a script: a water entity's surface height is not a settable property (`SetProperty` accepts wave, ripple, motion, foam, depth, colour and type; the depth is how deep the volume goes, not where its surface is), and there is no water to spawn. So the wave and the flood are drawn - depth-tested sprites (water wall, foam crest, flat flood sheets) and foam particles - and their force is a scripted current. The water has one flat level, measured from the ground where you stood when you called it, like the sea rising: valleys flood deeper, hills and roofs above it stay dry. Real level water only gets rougher.
+
+Budgets per physics step: 60 bodies moved (round robin, within 90 m of a player), 10 destruction probes, 8 holes; per frame on the client at most 57 sprites, 6 ground raycasts, 30 particles.
+
+## Options
+
+| Setting | Default | Key |
+|---|---|---|
+| Wave height 3-20 m | 9 m | `savegame.mod.height` |
+| Wave speed 8-30 m/s | 14 m/s | `savegame.mod.speed` |
+| Flood level behind it 0-4 m | 1.5 m | `savegame.mod.flood` |
+| Damage to weak structures x0-x2 | x1 | `savegame.mod.power` |
+| Warning siren | on | `savegame.mod.siren` |
+
+## Install, build, test
+
+```powershell
+New-Item -ItemType Junction -Path "$env:USERPROFILE\Documents\Teardown\mods\tsunami" -Target "$PWD\mod"   # run inside the mod folder
+..\_shared\.venv\Scripts\python tools\build_all.py
+```
+
+`tests/scenarios.lua` (32 checks, one VM and split server/client) with numbers: the front moves at the set speed (14.0 m/s), a crate is carried 56 m, a 1.2 t car 75 m, the player 27 m, a crate on a 25 m roof stays put, wooden walls are torn (88-100 %), masonry much less (4 %), hard masonry not at all, the level's water turns rough and is restored exactly, the wall is drawn with depth-tested sprites only (57 per frame at most); also siren, crash, roar, backwash, RMB, options, Russian.

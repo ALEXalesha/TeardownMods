@@ -662,7 +662,7 @@ A.IsShapeDisconnected = function() return false end
 A.IsStaticShapeDetached = function() return false end
 
 -- tags / entities
-local function ent(h) return H.bodies[h] or H.shapes[h] end
+local function ent(h) return H.bodies[h] or H.shapes[h] or (H.entities and H.entities[h]) end
 A.SetTag = function(h, tag, val) local e = ent(h); if e then e.tags[tag] = val or "" end end
 A.RemoveTag = function(h, tag) local e = ent(h); if e then e.tags[tag] = nil end end
 A.HasTag = function(h, tag) local e = ent(h); return e ~= nil and e.tags[tag] ~= nil end
@@ -682,13 +682,40 @@ A.Delete = function(h)
 	if s then s.valid = false return end
 end
 A.IsHandleValid = function(h) local e = ent(h); return e ~= nil and e.valid ~= false end
-A.GetEntityType = function(h) if H.bodies[h] then return "body" elseif H.shapes[h] then return "shape" end return "" end
-A.FindEntity = function() return 0 end
-A.FindEntities = function() return {} end
+A.GetEntityType = function(h) if H.bodies[h] then return "body" elseif H.shapes[h] then return "shape" elseif H.entities[h] then return H.entities[h].type end return "" end
+-- generic level entities (water so far): H.addEntity("water", {wave = 0.5, ...}, tags)
+H.entities = {}
+function H.addEntity(etype, props, tags)
+	local h = newHandle()
+	H.entities[h] = { type = etype, props = props or {}, tags = tags or {} }
+	return h
+end
+A.FindEntity = function(tag, global, etype)
+	local l = A.FindEntities(tag, global, etype)
+	return l[1] or 0
+end
+A.FindEntities = function(tag, global, etype)
+	local out = {}
+	for h, e in pairs(H.entities) do
+		if (etype == nil or etype == "" or e.type == etype) and (tag == nil or tag == "" or e.tags[tag] ~= nil) then out[#out + 1] = h end
+	end
+	table.sort(out)
+	return out
+end
 A.GetEntityChildren = function() return {} end
 A.GetEntityParent = function() return 0 end
-A.GetProperty = function() return nil end
-A.SetProperty = function() end
+A.GetProperty = function(h, name)
+	local e = H.entities[h]
+	if e then return e.props[name] end
+	return nil
+end
+A.SetProperty = function(h, name, value)
+	local e = H.entities[h]
+	if e then
+		if e.type == "water" and name == "transform" then H.err("SetProperty: water transform is not settable") return end
+		e.props[name] = value
+	end
+end
 A.FindLocation = function() return 0 end
 A.FindLocations = function() return {} end
 A.FindJoint = function() return 0 end

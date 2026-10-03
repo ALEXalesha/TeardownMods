@@ -1,0 +1,10 @@
+name = Tsunami
+en_name = Tsunami
+ru_name = Цунами
+author = Alexey
+en_description = A conch horn tool. LMB calls a tsunami from where you look: a siren warns while the wave rises on the horizon and any water in the level turns rough, then a wall of water rolls in, carries away loose objects, vehicles and you, tears weak buildings apart (wood, glass, plaster; concrete only a little), floods the ground behind it, and finally the water runs back and drains away. RMB calls the wave off. The game's water level itself cannot be raised by mods, so the wave and the flood are drawn and push like a strong current. Options: wave height, speed, flood level, damage to weak structures, siren.
+ru_description = Раковина-рог. ЛКМ вызывает цунами оттуда, куда вы смотрите: воет сирена, волна поднимается на горизонте, вода на уровне начинает бушевать, потом накатывает стена воды, уносит предметы, машины и вас, разрывает слабые постройки (дерево, стекло, штукатурка; бетон лишь немного), затапливает землю за собой, а в конце вода откатывается назад и уходит. ПКМ отменяет волну. Поднять уровень воды самой игры моды не могут, поэтому волна и затопление нарисованы и толкают как сильное течение. Настройки: высота и скорость волны, уровень затопления, разрушения слабых построек, сирена.
+description = Call a tsunami: siren, a wall of water, things carried away, backwash. / Цунами: сирена, стена воды, всё уносит, вода уходит обратно.
+tags = Tool
+preview = preview.jpg
+version = 2

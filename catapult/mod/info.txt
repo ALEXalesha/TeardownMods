@@ -1,0 +1,10 @@
+name = Catapult
+en_name = Catapult
+ru_name = Катапульта
+author = Alexey
+en_description = A giant wooden trebuchet. LMB places it in front of you; its frame is real destructible wood and its arm swings on a real hinge. Load a boulder, an explosive barrel, a car or a pile of crates (1-4, or put anything into the bucket, yourself included), set the power with the mouse wheel and the angle with X/V, turn it with Z/C, watch the predicted arc, and fire with F or E. A full-power boulder flies about 300 m and smashes holes into whatever it hits. R removes all catapults.
+ru_description = Огромный деревянный требушет. ЛКМ ставит его перед вами; рама - настоящее разрушаемое дерево, рычаг качается на настоящем шарнире. Зарядите валун, бочку со взрывчаткой, машину или кучу ящиков (1-4, или положите в ковш что угодно, хоть себя), колесом мыши задайте силу, X/V - угол, Z/C - поворот, смотрите на предсказанную дугу и стреляйте клавишей F или E. Валун на полной силе летит примерно на 300 м и пробивает всё, во что попадает. R убирает все катапульты.
+description = A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings on a real hinge. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you. Controls: LMB - place a catapult in front of you; F, or E on the machine - fire; Mouse wheel - power; Z / C - turn left / right; X / V - lower / raise the angle; 1 2 3 4 - load a boulder / barrel / car / crates; RMB - load the selected ammo; R - remove all catapults. Settings in the Mod Manager (Options).
+tags = Tool
+preview = thumb.jpg
+version = 2

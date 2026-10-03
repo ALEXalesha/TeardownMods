@@ -85,8 +85,9 @@ Mods you already checked in the game and called perfect come first; changed and 
 | 14 | falling-moon | sky flicker removed, destruction stronger - check it in game first |
 | 15 | volcano | reworked after your test (anchor, destruction) - check it in game first |
 | 16 | tsunami | made much stronger after your test - check it in game first |
+| 17 | catapult | new, not checked in game yet |
 
-For all 16 only the Workshop metadata changed besides that (info.txt description and tags, thumb.jpg,
+For the checked mods only the Workshop metadata changed besides that (info.txt description and tags, thumb.jpg,
 square preview.jpg).
 
 ## Русский
@@ -172,6 +173,7 @@ Asset, Vehicle, Tool, preview.jpg до 1 МБ, локальные моды в `D
 | 14 | falling-moon | убрано мерцание неба, разрушения сильнее - сначала проверить в игре |
 | 15 | volcano | переделан после вашей проверки (привязка, разрушения) - сначала проверить в игре |
 | 16 | tsunami | сильно усилен после вашей проверки - сначала проверить в игре |
+| 17 | catapult | новый, в игре ещё не проверен |
 
-Кроме этого у всех 16 изменились только данные для Мастерской (описание и теги в info.txt, thumb.jpg,
+У проверенных модов кроме этого изменились только данные для Мастерской (описание и теги в info.txt, thumb.jpg,
 квадратный preview.jpg).

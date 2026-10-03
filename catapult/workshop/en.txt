@@ -1,0 +1,39 @@
+[h1]Catapult[/h1]
+A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings on a real hinge. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you.
+
+[h2]Features[/h2]
+[list]
+[*]Full-power boulder flies about 300 m (power on the mouse wheel, angle 20-70°)
+[*]Predicted arc and landing ring before you fire
+[*]Impacts punch holes by speed and material: wood easily, brick from 25 m/s, hard materials from 45 m/s; boulders punch through, barrels explode
+[*]Ride it: stand in the bucket and get launched (no fall damage by default)
+[*]The machine can be blown apart; up to 4 catapults at once
+[*]Own models and sounds: creaking wood, the swing, the release, whistling flight, impacts
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - place a catapult in front of you
+[*][b]F, or E on the machine[/b] - fire
+[*][b]Mouse wheel[/b] - power
+[*][b]Z / C[/b] - turn left / right
+[*][b]X / V[/b] - lower / raise the angle
+[*][b]1 2 3 4[/b] - load a boulder / barrel / car / crates
+[*][b]RMB[/b] - load the selected ammo
+[*][b]R[/b] - remove all catapults
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Ammo at start: [i]Boulder[/i]
+[*]Reload automatically: [i]on[/i]
+[*]Impact damage x0.25-x2: [i]x1[/i]
+[*]Fall damage for a launched player: [i]off[/i]
+[*]Arc preview: [i]on[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]The throw speed is set by the mod at the release (so power and range are exact); the arm's swing itself is animated by the hinge motor
+[*]A car is the game's own small car if its prefab can be spawned, otherwise the mod's car body
+[*]At most 24 mod-spawned ammo pieces exist at once; the oldest disappear
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

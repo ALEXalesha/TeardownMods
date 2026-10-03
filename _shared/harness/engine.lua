@@ -685,7 +685,7 @@ A.Delete = function(h)
 	if s then s.valid = false return end
 end
 A.IsHandleValid = function(h) local e = ent(h); return e ~= nil and e.valid ~= false end
-A.GetEntityType = function(h) if H.bodies[h] then return "body" elseif H.shapes[h] then return "shape" elseif H.entities[h] then return H.entities[h].type end return "" end
+A.GetEntityType = function(h) if H.bodies[h] then return "body" elseif H.shapes[h] then return "shape" elseif H.joints[h] then return "joint" elseif H.entities[h] then return H.entities[h].type end return "" end
 -- generic level entities (water so far): H.addEntity("water", {wave = 0.5, ...}, tags)
 H.entities = {}
 function H.addEntity(etype, props, tags)
@@ -813,7 +813,7 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 	local content = xml
 	if not xml:find("<") then
 		if not checkFile(xml, "Spawn") then return {} end
-		content = H.readFile(resolvePath(xml))
+		content = H.readFile((resolvePath(xml)))
 	end
 	local out = {}
 	local cur = nil
@@ -825,6 +825,13 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			local bt = A.TransformToParentTransform(transform, H.attrTransform(attrs))
 			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
 			out[#out + 1] = cur
+			local btags = parseAttr(attrs, "tags")
+			if btags then
+				for t in btags:gmatch("%S+") do
+					local k, v = t:match("([^=]+)=?(.*)")
+					H.bodies[cur].tags[k] = v
+				end
+			end
 			H.bodies[cur].spawnedXml = content
 		elseif tag == "vox" or tag == "voxbox" then
 			local sizes = nil
@@ -1122,7 +1129,7 @@ A.GetPlayerGrabPoint = function() return V() end
 A.GetPlayerPickShape = function() return 0 end
 A.GetPlayerPickBody = function(id) return P(id).pickBody end
 A.GetPlayerInteractShape = function() return 0 end
-A.GetPlayerInteractBody = function() return 0 end
+A.GetPlayerInteractBody = function(id) return P(id).interactBody or 0 end
 A.GetPlayerScreen = function() return 0 end
 A.SetPlayerScreen = function() end
 A.GetPlayerAnimator = function() return 0 end
@@ -1461,12 +1468,59 @@ end
 ---------------------------------------------------------------------------
 -- physics step
 ---------------------------------------------------------------------------
+-- hinge joints spawned from XML: the joint's dynamic body is held on the hinge (no free fall) and
+-- turned about the joint by its motor (SetJointMotor velocity, or SetJointMotorTarget angle)
+function H.hingeStep(dt)
+	for j, jj in pairs(H.joints) do
+		local b = jj.body and H.bodies[jj.body]
+		if jj.type == "hinge" and b and b.valid and b.dynamic and not jj.broken then
+			b.hinged = true
+			local w = 0
+			if jj.target then
+				local err = jj.target - jj.angle
+				w = math.max(-(jj.maxVel or 3), math.min(jj.maxVel or 3, math.rad(err) * 8))
+			elseif jj.motorVel then
+				w = jj.motorVel
+			end
+			local wt = A.TransformToParentTransform(A.Transform(b.pos, b.rot), jj.localT)
+			local axis = A.QuatRotateVec(wt.rot, A.Vec(0, 0, 1))
+			local d = w * dt
+			if d ~= 0 then
+				local q = A.QuatAxisAngle(axis, math.deg(d))
+				b.rot = A.QuatRotateQuat(q, b.rot)
+				b.pos = A.VecAdd(wt.pos, A.QuatRotateVec(q, A.VecSub(b.pos, wt.pos)))
+				jj.angle = jj.angle + math.deg(d)
+			end
+			b.angvel = A.VecScale(axis, w)
+			b.vel = A.Vec(0, 0, 0)
+		end
+	end
+end
+
+-- optional: bodies stop at destructible blocks (H.cubeCollision = true)
+local function cubeHit(b)
+	if not H.cubeCollision or #H.cubes == 0 then return false end
+	local hit = false
+	H.eachCubeNear(b.pos, b.half[1] + 2, function(cube)
+		if hit then return end
+		local h = cube.half
+		if math.abs(b.pos[1] - cube.c[1]) < h + b.half[1] and math.abs(b.pos[2] - cube.c[2]) < h + b.half[2] and math.abs(b.pos[3] - cube.c[3]) < h + b.half[3] then hit = true end
+	end)
+	return hit
+end
+
 function H.physicsStep(dt)
+	H.hingeStep(dt)
 	for h, b in pairs(H.bodies) do
 		-- sleeping bodies (active == false) are not simulated until something wakes them
-		if b.valid and b.dynamic and h ~= H.worldBody and not b.isTool and b.active ~= false then
+		if b.valid and b.dynamic and h ~= H.worldBody and not b.isTool and b.active ~= false and not b.hinged then
 			b.vel = A.VecAdd(b.vel, A.VecScale(H.gravity, dt * b.gravityScale))
+			local prevPos = b.pos
 			b.pos = A.VecAdd(b.pos, A.VecScale(b.vel, dt))
+			if cubeHit(b) then
+				b.pos = prevPos
+				b.vel = A.VecScale(b.vel, 0.1)
+			end
 			local r = b.half[2]
 			if b.pos[2] < r then
 				b.pos[2] = r

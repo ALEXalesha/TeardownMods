@@ -20,34 +20,53 @@ W, H = 1024, 576
 
 
 def moon_png(path, size=512, seed=1):
-    rnd = random.Random(seed)
+    """An opaque lit sphere: Lambert light with a soft terminator, limb darkening, dark
+    maria, and craters made from a height field (bowl plus raised rim), so each crater is
+    lit on one side and shadowed on the other instead of drawn as flat rings."""
+    rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
     nx = (xx / (size - 1) - 0.5) * 2
-    ny = (yy / (size - 1) - 0.5) * 2
+    ny = -(yy / (size - 1) - 0.5) * 2
     r = np.sqrt(nx ** 2 + ny ** 2)
-    inside = r <= 1
     nz = np.sqrt(np.clip(1 - r ** 2, 0, 1))
-    shade = np.clip(0.25 + 0.75 * (nx * -0.4 + ny * -0.3 + nz * 0.86), 0, 1)
-    tone = np.full_like(r, 0.75)
-    # maria and craters
-    for i in range(40):
-        cx, cy = rnd.uniform(-0.9, 0.9), rnd.uniform(-0.9, 0.9)
-        cr = rnd.uniform(0.03, 0.22)
+    hgt = np.zeros_like(r)
+    alb = np.full_like(r, 0.78)
+    for i in range(55):
+        cx, cy = rng.uniform(-0.95, 0.95, 2)
+        cr = rng.uniform(0.012, 0.11) ** 1.2
         d = np.sqrt((nx - cx) ** 2 + (ny - cy) ** 2) / cr
-        if i < 6:
-            tone -= 0.18 * np.clip(1 - d, 0, 1) ** 0.5
-        else:
-            tone -= 0.12 * ((d < 1) & (d > 0.75)) * 0 + 0.1 * np.clip(1 - d, 0, 1)
-            tone += 0.12 * ((d > 0.85) & (d < 1.05))
-    noise = np.random.default_rng(seed).normal(0, 0.03, (size, size))
-    v = np.clip(tone * shade + noise, 0, 1)
+        hgt += np.where(d < 1, -(1 - d ** 2), 0) * cr
+        hgt += np.where((d >= 0.8) & (d < 1.35), np.cos((d - 1.05) / 0.3 * 1.5708) * 0.35, 0) * cr
+        alb += np.where(d < 1, 0.04, 0)
+    for i in range(7):
+        cx, cy = rng.uniform(-0.7, 0.7, 2)
+        cr = rng.uniform(0.18, 0.4)
+        d = np.sqrt((nx - cx) ** 2 + ((ny - cy) * 1.2) ** 2) / cr
+        alb -= 0.32 * np.clip(1 - d, 0, 1) ** 0.6
+    alb += rng.normal(0, 0.015, alb.shape)
+    gy, gx = np.gradient(hgt * size * 0.18)
+    # perturbed normal (screen space, z towards the viewer)
+    n = np.stack([nx - gx, ny + gy, nz], -1)
+    n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
+    light = np.array([-0.38, 0.3, 0.87])
+    light /= np.linalg.norm(light)
+    lam = np.clip((n * light).sum(-1), 0, 1)
+    soft = np.clip((n * light).sum(-1) * 4 + 0.08, 0, 1)        # soft terminator
+    limb = 0.55 + 0.45 * nz ** 0.5                                 # limb darkening
+    v = np.clip(alb * (0.06 + 0.94 * lam * soft) * limb, 0, 1)
     arr = np.zeros((size, size, 4), np.uint8)
-    arr[..., 0] = (v * 235).astype(np.uint8)
-    arr[..., 1] = (v * 230).astype(np.uint8)
-    arr[..., 2] = (v * 222).astype(np.uint8)
-    edge = np.clip((1 - r) * size / 3, 0, 1)
-    arr[..., 3] = (inside * edge * 255).astype(np.uint8)
+    arr[..., 0] = (v * 245).astype(np.uint8)
+    arr[..., 1] = (v * 240).astype(np.uint8)
+    arr[..., 2] = (v * 232).astype(np.uint8)
+    edge = np.clip((1 - r) * size / 2.5, 0, 1)                      # 1-2 px anti-aliased rim, opaque inside
+    arr[..., 3] = (edge * 255).astype(np.uint8)
     Image.fromarray(arr, "RGBA").save(path)
+    # self-check: opaque disc, lit side brighter than the dark side
+    inside = r < 0.97
+    assert arr[..., 3][inside].min() == 255, "moon sprite must be opaque inside the disc"
+    lit = v[(nx < -0.3) & (ny > 0.2) & inside].mean()
+    dark = v[(nx > 0.6) & (ny < -0.3) & inside].mean()
+    assert lit > dark * 2, (lit, dark)
 
 
 def glow_png(path, size=256):

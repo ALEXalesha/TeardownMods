@@ -297,6 +297,71 @@ function H.addStaticBox(min, max, material)
 	return sh
 end
 
+-- Destructible blocks: a grid of small static cubes (buildings) kept apart from H.boxes so
+-- physics and raycasts stay fast. MakeHole removes a cube when its centre lies within the
+-- radius for its material class, exactly as the game's three MakeHole radii work:
+-- r0 soft (glass, foliage, dirt, wood, plaster, plastic), r1 medium (masonry/concrete/brick,
+-- weak metal), r2 hard (hard metal, hard masonry, heavy metal, rock).
+-- Explosions do not remove cubes here (unknown radius in the game), so laws only count holes.
+H.cubes = {}
+H.cubeGrid = {}
+H.CUBE_BUCKET = 4
+local CUBE_CLASS = { glass = 0, foliage = 0, dirt = 0, wood = 0, plaster = 0, plastic = 0,
+	masonry = 1, concrete = 1, brick = 1, metal = 1,
+	hardmetal = 2, hardmasonry = 2, heavymetal = 2, rock = 2 }
+local function cubeKey(ix, iy, iz) return ix .. ":" .. iy .. ":" .. iz end
+local function cubeBucket(p) local b = H.CUBE_BUCKET return math.floor(p[1] / b), math.floor(p[2] / b), math.floor(p[3] / b) end
+function H.addCubes(min, max, cell, material)
+	local n = 0
+	local x = min[1]
+	while x < max[1] - 1e-6 do
+		local y = min[2]
+		while y < max[2] - 1e-6 do
+			local z = min[3]
+			while z < max[3] - 1e-6 do
+				local c = { x + cell * 0.5, y + cell * 0.5, z + cell * 0.5 }
+				local sh = newHandle()
+				H.shapes[sh] = { handle = sh, body = H.worldBody, local_ = A.Transform(), material = material, tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, cube = true }
+				local cube = { c = c, half = cell * 0.5, material = material, class = CUBE_CLASS[material] or 1, alive = true, shape = sh }
+				H.cubes[#H.cubes + 1] = cube
+				local k = cubeKey(cubeBucket(c))
+				local list = H.cubeGrid[k]
+				if not list then list = {} H.cubeGrid[k] = list end
+				list[#list + 1] = cube
+				n = n + 1
+				z = z + cell
+			end
+			y = y + cell
+		end
+		x = x + cell
+	end
+	return n
+end
+-- calls fn(cube) for alive cubes whose bucket overlaps the sphere
+local function eachCubeNear(p, r, fn)
+	local b = H.CUBE_BUCKET
+	local x0, y0, z0 = math.floor((p[1] - r) / b), math.floor((p[2] - r) / b), math.floor((p[3] - r) / b)
+	local x1, y1, z1 = math.floor((p[1] + r) / b), math.floor((p[2] + r) / b), math.floor((p[3] + r) / b)
+	for ix = x0, x1 do for iy = y0, y1 do for iz = z0, z1 do
+		local list = H.cubeGrid[cubeKey(ix, iy, iz)]
+		if list then for i = 1, #list do if list[i].alive then fn(list[i]) end end end
+	end end end
+end
+H.eachCubeNear = eachCubeNear
+-- statistics: cubes whose horizontal distance from c is within [r0, r1); optional class filter
+function H.cubeStats(c, r0, r1, class)
+	local total, removed = 0, 0
+	for _, cube in ipairs(H.cubes) do
+		local dx, dz = cube.c[1] - c[1], cube.c[3] - c[3]
+		local d = math.sqrt(dx * dx + dz * dz)
+		if d >= r0 and d < r1 and (class == nil or cube.class == class) then
+			total = total + 1
+			if not cube.alive then removed = removed + 1 end
+		end
+	end
+	return total, removed
+end
+
 H.worldBody = newHandle()
 H.bodies[H.worldBody] = { handle = H.worldBody, pos = V(), rot = Q(), vel = V(), angvel = V(), mass = 0, dynamic = false, half = V(1000, 0.01, 1000), shapes = {}, tags = {}, valid = true, gravityScale = 0, active = false, player = 0, material = "dirt", desc = "" }
 H.groundShape = newHandle()
@@ -469,6 +534,27 @@ A.QueryClosestPoint = function(origin, maxDist)
 			local d = A.VecLength(A.VecSub(origin, cp))
 			if d <= best then best, bp, bs = d, cp, b.shapes[1] or 0; bn = d > 1e-6 and A.VecNormalize(A.VecSub(origin, cp)) or V(0, 1, 0) end
 		end
+	end
+	if #H.cubes > 0 and not q.require.dynamic then
+		eachCubeNear(origin, best, function(cube)
+			local h = cube.half
+			local c = cube.c
+			local cp = V(math.max(c[1] - h, math.min(origin[1], c[1] + h)), math.max(c[2] - h, math.min(origin[2], c[2] + h)), math.max(c[3] - h, math.min(origin[3], c[3] + h)))
+			local d = A.VecLength(A.VecSub(origin, cp))
+			if d <= best then
+				best, bp, bs = d, cp, cube.shape
+				if d > 1e-6 then
+					-- face normal of the nearest face (cubes are axis aligned)
+					local o = A.VecSub(origin, c)
+					local ax = { math.abs(o[1]), math.abs(o[2]), math.abs(o[3]) }
+					if ax[1] >= ax[2] and ax[1] >= ax[3] then bn = V(o[1] > 0 and 1 or -1, 0, 0)
+					elseif ax[2] >= ax[3] then bn = V(0, o[2] > 0 and 1 or -1, 0)
+					else bn = V(0, 0, o[3] > 0 and 1 or -1) end
+				else
+					bn = V(0, 1, 0)
+				end
+			end
+		end)
 	end
 	qreset()
 	if bp then return true, bp, bn, bs end
@@ -706,15 +792,22 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			end
 			-- one shape per model in the vox file, with its real size
 			local n = sizes and #sizes or 1
+			local made = {}
 			for k = 1, math.max(1, n) do
 				local sh = newHandle()
 				local size = sizes and sizes[k] and { sizes[k][1], sizes[k][2], sizes[k][3] } or nil
 				H.shapes[sh] = { handle = sh, body = cur, local_ = A.Transform(), material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = 0.1 * scale }
 				table.insert(H.bodies[cur].shapes, sh)
 				out[#out + 1] = sh
+				made[#made + 1] = sh
 			end
 			local tags = parseAttr(attrs, "tags")
-			if tags then for t in tags:gmatch("%S+") do local k, v = t:match("([^=]+)=?(.*)"); H.shapes[sh].tags[k] = v end end
+			if tags then
+				for t in tags:gmatch("%S+") do
+					local k, v = t:match("([^=]+)=?(.*)")
+					for _, sh in ipairs(made) do H.shapes[sh].tags[k] = v end
+				end
+			end
 		elseif tag == "light" then
 			out[#out + 1] = newHandle()
 		elseif tag == "joint" then
@@ -734,6 +827,20 @@ A.MakeHole = function(pos, r0, r1, r2, silent)
 	table.insert(H.holes, { pos = A.VecCopy(pos), r0 = r0, r1 = r1, r2 = r2, frame = H.frame })
 	-- count voxels removed from boxes of soft material within r0
 	local count = 0
+	if #H.cubes > 0 then
+		local radii = { [0] = r0, [1] = r1, [2] = r2 }
+		eachCubeNear(pos, r0, function(cube)
+			local rr = radii[cube.class]
+			if rr > 0 then
+				local dx, dy, dz = cube.c[1] - pos[1], cube.c[2] - pos[2], cube.c[3] - pos[3]
+				if dx * dx + dy * dy + dz * dz <= rr * rr then
+					cube.alive = false
+					H.shapes[cube.shape].valid = false
+					count = count + 10
+				end
+			end
+		end)
+	end
 	for _, bx in ipairs(H.boxes) do
 		local cp = V(math.max(bx.min[1], math.min(pos[1], bx.max[1])), math.max(bx.min[2], math.min(pos[2], bx.max[2])), math.max(bx.min[3], math.min(pos[3], bx.max[3])))
 		if A.VecLength(A.VecSub(cp, pos)) < r0 then count = count + 10 end
@@ -808,8 +915,12 @@ A.GetPostProcessingProperty = function(name)
 end
 A.SetPostProcessingDefault = function() H.post = { saturation = { 1 }, colorbalance = { 1, 1, 1 }, brightness = { 1 }, gamma = { 1 }, bloom = { 1 } } end
 A.SetEnvironmentDefault = function() end
-A.LoadSprite = function(path) checkFile(path, "LoadSprite"); return newHandle() end
-A.DrawSprite = function() end
+H.spritePaths = {}
+H.sprites = {}   -- this frame: { path, w, h, a, depthTest, additive }
+A.LoadSprite = function(path) checkFile(path, "LoadSprite"); local h = newHandle(); H.spritePaths[h] = path; return h end
+A.DrawSprite = function(h, t, w, hh, r, g, b, a, depthTest, additive, fog)
+	H.sprites[#H.sprites + 1] = { path = H.spritePaths[h] or "?", pos = t and t.pos, w = w, h = hh, a = a or 1, depthTest = depthTest == true, additive = additive == true }
+end
 A.DrawLine = function() end
 A.DebugLine = function() end
 A.DebugCross = function() end

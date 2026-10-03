@@ -7,8 +7,8 @@ local function sh() return T.sharedOf() end
 local function callsOf(n) return H.calls[n] or 0 end
 
 T.budget("ApplyBodyImpulse", 2 * 80)
-T.budget("MakeHole", 2 * 8 + 1)
-T.budget("QueryClosestPoint", 2 * 8)
+T.budget("MakeHole", 45)
+T.budget("QueryClosestPoint", 90)
 T.budget("QueryAabbBodies", 2)
 T.budget("SpawnFire", 4)
 T.budget("SetEnvironmentProperty", 3)
@@ -60,9 +60,15 @@ T.check(f ~= nil, "impact at the end of the countdown")
 T.check(T.soundsPlayed("beep.ogg") >= 8, "countdown beeps (" .. T.soundsPlayed("beep.ogg") .. ")")
 T.check(T.soundsPlayed("roar.ogg") == 1, "incoming roar")
 T.check(#H.explosions > ex0, "explosion at the impact")
-local bigHole = false
-for _, h in ipairs(H.holes) do if h.r0 >= 8 then bigHole = true end end
-T.check(bigHole, "crater")
+T.frames(60)
+local ring = 0
+local mr = sh().m.mr
+for _, h in ipairs(H.holes) do
+	local dx, dz = h.pos[1] - sh().m.x, h.pos[3] - sh().m.z
+	local d = math.sqrt(dx * dx + dz * dz)
+	if d >= 0.8 * mr and d <= 1.35 * mr then ring = ring + 1 end
+end
+T.check(ring >= 50, "crater ring dug around the moon (" .. ring .. " holes)")
 T.frames(2)
 T.check(T.soundsPlayed("impact.ogg") == 1, "impact sound")
 T.check(T.cenv().client.flash > 0.3, "blinding flash")
@@ -88,6 +94,7 @@ T.check(sh().m.phase == "idle", "back to idle after the aftermath")
 T.check(math.abs(H.env.skyboxtint[2] - orig[2]) < 1e-6, "sky restored")
 
 -- abort during the approach
+local exAbort = #H.explosions
 T.press("usetool"); T.frames(2)
 srv().ev.T = 20
 sh().m.T = 20
@@ -96,7 +103,7 @@ T.press("grab"); T.frames(2)
 T.check(sh().m.phase == "recede", "RMB sends the moon back")
 T.runUntil(function() return sh().m.phase == "idle" end, 400)
 T.check(sh().m.phase == "idle" and math.abs(H.env.skyboxtint[2] - orig[2]) < 1e-6, "receded, sky restored")
-T.check(#H.explosions == ex0 + 1, "no impact after aborting")
+T.check(#H.explosions == exAbort, "no impact after aborting")
 
 -- countdown hidden
 H.reg["savegame.mod.countdown"] = false

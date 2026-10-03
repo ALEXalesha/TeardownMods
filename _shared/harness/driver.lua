@@ -191,6 +191,7 @@ function T.step(dt)
 	H.camera = nil
 	H.cameraShake = 0
 	H.lights = {}
+	H.sprites = {}
 	H.timeScale = 1
 	for name, s in pairs(T.scripts) do
 		if not s.isOptions then

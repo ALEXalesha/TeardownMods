@@ -2,32 +2,52 @@
 -- Falling Moon / Падающая луна
 -- Telescope tool. LMB marks the impact point: the moon starts to fall towards it
 -- over 1-5 minutes, growing in the sky. Tremors, wind and lifting debris build
--- up, the sky turns red, a countdown runs. At the end: a blinding flash, a huge
--- crater, and a shockwave that rolls outwards over several frames, throwing
--- everything away, punching holes and starting fires; then dust and a slow
--- return of the sky. RMB during the approach sends the moon back.
+-- up, the sky turns red, a countdown runs. For the last stretch the moon is a
+-- real voxel body that comes down on the point and stays in its crater. At the
+-- impact: a blinding flash, a crater ring around the moon, and a shockwave that
+-- rolls outwards and takes most structures in the radius down - holes punched
+-- into whatever stands near the front (hard materials too near the centre),
+-- explosions, fires, bodies thrown hard - spread over frames within a budget.
+-- RMB sends the moon back while it is still far away.
 --
--- Server: timeline, tremors and wind (budgeted impulses), sky tint
--- (SetEnvironmentProperty is server-side, like the game's own weather),
--- crater, shockwave in waves, fires, player push.
--- Client: the moon (a camera-facing sprite, kept within draw distance and scaled
--- to the right angular size), sounds, camera shake, flash, dust, countdown.
+-- Far away the moon is a camera-facing sprite: opaque, sphere-shaded, depth-tested
+-- (trees and buildings in front of it hide it), with the size the real geometry
+-- gives. When it comes within MOON_SWAP radii of the point, the server spawns the
+-- voxel moon (a hollow shell tagged unbreakable and nocull) at exactly that place
+-- and moves it every physics step, so the switch keeps size and direction.
+--
+-- Server: timeline, moon body, tremors and wind (budgeted impulses), sky tint
+-- (SetEnvironmentProperty is server-side, like the game's own weather), crater,
+-- shockwave, destruction queue, fires, player push.
+-- Client: far-moon sprite, sounds, camera shake, flash, dust, countdown.
 
 #include "script/include/player.lua"
 #include "script/toolanimation.lua"
 
 local TOOL = "fallingmoon"
-local SHOCK_SPEED = 120
+local SHOCK_SPEED = 60          -- m/s
 local AFTERMATH = 30
 local RECEDE = 4
 local SCAN_INTERVAL = 1.0
 local TREMOR_PER_UPDATE = 30
 local SHOCK_PER_UPDATE = 80
-local HOLE_PROBES = 8
 local MAX_SHOCK_BODIES = 600
-local MOON_RADIUS = 1700     -- metres, a scaled-down moon so it reads well
-local START_DIST = 60000     -- metres away when it starts falling
-local SPRITE_DIST = 450      -- the sprite is drawn this far away at most
+local START_RADII = 41          -- the moon starts this many radii away (about 1.4 degrees)
+local MOON_SWAP = 8             -- ... and becomes a voxel body within this many radii
+local EMBED = 0.25              -- the moon's centre ends this many radii below the impact point
+local MOON_VOXELS = 80          -- shell radius in voxels (moon.vox)
+local SPRITE_DIST = 450         -- the far sprite is drawn this far away at most
+-- destruction budget per physics step. Buildings are shells, so the voxels a hole removes
+-- grow with its area (radius squared), not its volume.
+local HOLE_R2_BUDGET = 700
+local HOLES_PER_UPDATE = 45
+local PROBES_PER_UPDATE = 90
+local FIRES_PER_UPDATE = 6
+local LEVELS = {                -- per destruction setting: hole size, probe density per m^2, throw
+	{ size = 0.7, density = 0.03, throw = 0.7 },
+	{ size = 1.0, density = 0.05, throw = 1.0 },
+	{ size = 1.35, density = 0.08, throw = 1.3 },
+}
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -39,6 +59,8 @@ local function getB(k, d) local key = "savegame.mod." .. k if HasKey(key) then r
 local function tr(en, ru) if GetInt("options.language") == 7 then return ru end return en end
 
 function readSettings()
+	local size = getI("moonsize", 45)
+	if size ~= 30 and size ~= 60 then size = 45 end
 	return {
 		duration = clamp(getF("duration", 120), 60, 300),
 		radius = clamp(getF("radius", 150), 50, 300),
@@ -47,12 +69,15 @@ function readSettings()
 		tint = clamp(getF("tint", 0.8), 0, 1),
 		countdown = getB("countdown", true),
 		tremors = getB("tremors", true),
+		moonSize = size,
+		destruction = math.floor(clamp(getI("destruction", 3), 1, 3)),
 	}
 end
 
--- distance of the moon from the impact point at progress p (0..1)
-function moonDistance(p)
-	return START_DIST * (1 - p) ^ 2.2 + 30
+-- distance (along the approach direction) of the moon centre from its final place at
+-- progress u (0..1): it accelerates in, like something falling
+function moonDistance(u, r)
+	return START_RADII * r * (1 - clamp(u, 0, 1) ^ 3)
 end
 
 ---------------------------------------------------------------------------
@@ -65,7 +90,8 @@ local ENV_RED = { skyboxtint = { 1.0, 0.35, 0.2 }, fogColor = { 0.5, 0.16, 0.08 
 function server.init()
 	RegisterTool(TOOL, tr("Moon Caller", "Зов луны"), "MOD/prefab/tool.xml", 6)
 	server.ev = nil
-	shared.m = { phase = "idle", t = 0, T = 1, x = 0, y = 0, z = 0, dx = 0, dy = 1, dz = 0, r = 0, R = 150, n = 0, prog = 0 }
+	shared.m = { phase = "idle", t = 0, T = 1, x = 0, y = 0, z = 0, dx = 0, dy = 1, dz = 0, r = 0, R = 150, n = 0, prog = 0,
+		cx = 0, cy = 0, cz = 0, mr = 45, body = 0 }
 end
 
 local function captureEnv()
@@ -89,7 +115,7 @@ function server.tick(dt)
 	for p in Players() do
 		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
 			if InputPressed("usetool", p) and not server.ev then server.start(p) end
-			if InputPressed("grab", p) and server.ev and server.ev.phase == "approach" then server.abort() end
+			if InputPressed("grab", p) and server.ev and server.ev.phase == "approach" and server.ev.moonBody == 0 then server.abort() end
 		end
 	end
 end
@@ -112,13 +138,15 @@ function server.start(p)
 		local h2, d2 = QueryRaycast(probe, Vec(0, -1, 0), 200)
 		target = h2 and VecAdd(probe, Vec(0, -d2, 0)) or VecAdd(eye.pos, VecScale(flat, 80))
 	end
-	-- the moon comes in from above, slightly from behind the impact point as seen by the player
+	-- the moon comes in from above, from beyond the impact point as seen by the player
 	local away = VecSub(target, eye.pos)
 	away[2] = 0
 	away = VecLength(away) > 0.1 and VecNormalize(away) or Vec(0, 0, -1)
 	local dir = VecNormalize(VecAdd(Vec(0, 1, 0), VecScale(away, 0.7)))
+	local r = s.moonSize
 	server.ev = { phase = "approach", t = 0, T = s.duration, center = target, dir = dir, s = s, orig = captureEnv(),
-		tracked = {}, cursor = 1, scanT = 0, tintT = 0, owner = p }
+		tracked = {}, cursor = 1, scanT = 0, tintT = 0, owner = p, mr = r, rest = VecAdd(target, Vec(0, -EMBED * r, 0)),
+		moonBody = 0, moonLocal = nil, spin = rnd(0, 360), level = LEVELS[s.destruction] }
 	local m = shared.m
 	m.phase = "approach"
 	m.t = 0
@@ -129,6 +157,52 @@ function server.start(p)
 	m.r = 0
 	m.n = m.n + 1
 	m.prog = 0
+	m.mr = r
+	m.body = 0
+	server.placeMoon(server.ev, 0)
+end
+
+-- moon centre for progress u; shared for the client's far sprite
+function server.placeMoon(ev, u)
+	local L = moonDistance(u, ev.mr)
+	local c = VecAdd(ev.rest, VecScale(ev.dir, L))
+	ev.moonPos = c
+	ev.moonL = L
+	local m = shared.m
+	m.cx, m.cy, m.cz = c[1], c[2], c[3]
+	return c, L
+end
+
+-- the voxel moon: spawned where the sprite was, then moved every physics step
+function server.spawnMoon(ev)
+	local scale = ev.mr / (MOON_VOXELS * 0.1)
+	local xml = "<body dynamic='false'><vox file='MOD/vox/moon.vox' scale='" .. string.format("%.4f", scale) .. "' tags='unbreakable nocull'/></body>"
+	local ents = Spawn(xml, Transform(ev.moonPos), true)
+	local body, shape = 0, 0
+	for i = 1, #ents do
+		local ty = GetEntityType(ents[i])
+		if ty == "body" and body == 0 then body = ents[i] end
+		if ty == "shape" and shape == 0 then shape = ents[i] end
+	end
+	if body == 0 then return end
+	-- where the sphere centre sits in body space, whatever origin convention the vox loader uses
+	local localCenter = Vec(0, 0, 0)
+	if shape ~= 0 then
+		local sx, sy, sz, vs = GetShapeSize(shape)
+		local center = TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * vs * 0.5, sy * vs * 0.5, sz * vs * 0.5))
+		localCenter = TransformToLocalPoint(GetBodyTransform(body), center)
+	end
+	ev.moonBody = body
+	ev.moonLocal = localCenter
+	shared.m.body = body
+	server.moveMoon(ev)
+end
+
+function server.moveMoon(ev)
+	if ev.moonBody == 0 or not IsHandleValid(ev.moonBody) then return end
+	local rot = QuatEuler(12, ev.spin, 0)
+	local pos = VecSub(ev.moonPos, QuatRotateVec(rot, ev.moonLocal))
+	SetBodyTransform(ev.moonBody, Transform(pos, rot))
 end
 
 function server.abort()
@@ -145,24 +219,34 @@ function server.update(dt)
 	ev.t = ev.t + dt
 	local m = shared.m
 	m.t = ev.t
+	m.T = ev.T
 	if ev.phase == "approach" then
-		local p = clamp(ev.t / ev.T, 0, 1)
-		m.prog = p
-		local I = smooth(0.35, 1.0, p)
+		local u = clamp(ev.t / ev.T, 0, 1)
+		m.prog = u
+		local _, L = server.placeMoon(ev, u)
+		if ev.moonBody == 0 and L <= MOON_SWAP * ev.mr then server.spawnMoon(ev) end
+		if ev.moonBody ~= 0 then
+			ev.spin = ev.spin + dt * 4
+			server.moveMoon(ev)
+		end
+		local I = smooth(0.35, 1.0, u)
 		server.tint(ev, dt, I * ev.s.tint)
 		if ev.s.tremors and I > 0 then server.tremors(ev, dt, I) end
 		if ev.t >= ev.T then server.impact(ev) end
 	elseif ev.phase == "recede" then
-		local p = ev.recedeFrom * clamp(1 - ev.t / RECEDE, 0, 1)
-		m.prog = p
-		server.tint(ev, dt, smooth(0.35, 1, p) * ev.s.tint)
+		local u = ev.recedeFrom * clamp(1 - ev.t / RECEDE, 0, 1)
+		m.prog = u
+		server.placeMoon(ev, u)
+		server.tint(ev, dt, smooth(0.35, 1, u) * ev.s.tint)
 		if ev.t >= RECEDE then server.finish() end
 	elseif ev.phase == "impact" then
 		server.shock(ev, dt)
+		server.work(ev, dt)
 	elseif ev.phase == "aftermath" then
+		server.work(ev, dt)
 		local k = 1 - smooth(AFTERMATH - 20, AFTERMATH, ev.t)
 		server.tint(ev, dt, k * ev.s.tint)
-		if ev.t >= AFTERMATH then server.finish() end
+		if ev.t >= AFTERMATH and #ev.queue == 0 and ev.craterNext > #ev.crater then server.finish() end
 	end
 end
 
@@ -179,6 +263,7 @@ function server.finish()
 	server.ev = nil
 	shared.m.phase = "idle"
 	shared.m.prog = 0
+	shared.m.body = 0
 end
 
 -- shaking, a wind away from the moon and light debris lifting in the last part
@@ -214,7 +299,6 @@ function server.tremors(ev, dt, I)
 				local jolt = Vec(rnd(-1, 1), rnd(0, 1.5), rnd(-1, 1))
 				local dv = VecScale(jolt, 1.6 * I * massK)
 				if mass < 80 and I > 0.5 then
-					-- light things start to lift and drift with the wind
 					dv = VecAdd(dv, VecAdd(Vec(0, 7 * (I - 0.5) * dt * stride, 0), VecScale(wind, 5 * I * dt * stride)))
 				end
 				ApplyBodyImpulse(b, TransformToParentPoint(GetBodyTransform(b), GetBodyCenterOfMass(b)), VecScale(dv, mass))
@@ -223,22 +307,52 @@ function server.tremors(ev, dt, I)
 	end
 end
 
+-- crater ring around the moon: tiles from the moon's rim outwards, deepest at the rim
+local function craterTiles(c, r, lv)
+	local tiles = {}
+	local tr0 = 3.5 * lv.size
+	local step = tr0 * 1.4
+	local inner, outer = 0.85 * r, 1.3 * r
+	local depth0 = 0.3 * r
+	for x = -outer, outer, step do
+		for z = -outer, outer, step do
+			local rho = math.sqrt(x * x + z * z)
+			if rho >= inner and rho <= outer then
+				local depth = depth0 * (1 - (rho - inner) / (outer - inner))
+				for y = -depth, 1.0, step do
+					tiles[#tiles + 1] = { pos = VecAdd(c, Vec(x, y, z)), d = rho }
+				end
+			end
+		end
+	end
+	table.sort(tiles, function(a, b) return a.d < b.d end)
+	return tiles, tr0
+end
+
 function server.impact(ev)
 	local s = ev.s
 	local c = ev.center
+	local lv = ev.level
 	ev.phase = "impact"
 	ev.t = 0
 	ev.r = 0
+	ev.rDone = 0
 	local m = shared.m
 	m.phase = "impact"
 	m.t = 0
 	m.r = 0
 	m.prog = 1
+	server.placeMoon(ev, 1)
+	server.moveMoon(ev)
 	applyEnv(ev.orig, s.tint)
-	-- crater and the lunar boulder
-	MakeHole(c, 8, 6, 3.5, false)
 	Explosion(c, 4, ev.owner)
-	Spawn("<body dynamic='false'><vox file='MOD/vox/boulder.vox' scale='2'/></body>", Transform(VecAdd(c, Vec(0, -2.5, 0)), QuatEuler(rnd(-15, 15), rnd(0, 360), rnd(-15, 15))), true)
+	for i = 1, 6 do
+		local a = i / 6 * 6.2832
+		Explosion(VecAdd(c, Vec(math.cos(a) * 1.05 * ev.mr, 1, math.sin(a) * 1.05 * ev.mr)), 4, ev.owner)
+	end
+	ev.crater, ev.craterR = craterTiles(c, ev.mr, lv)
+	ev.craterNext = 1
+	ev.queue = {}          -- pending probe bands { r0, r1, n }
 	-- every body in reach, nearest first; the shockwave works through the list over several frames
 	local R = s.radius
 	QueryRequire("physical dynamic")
@@ -246,7 +360,7 @@ function server.impact(ev)
 	local items = {}
 	for i = 1, #list do
 		local b = list[i]
-		if GetBodyPlayer(b) == 0 then
+		if GetBodyPlayer(b) == 0 and b ~= ev.moonBody then
 			local d = VecLength(VecSub(GetBodyTransform(b).pos, c))
 			if d <= R then items[#items + 1] = { b = b, d = d } end
 		end
@@ -256,14 +370,22 @@ function server.impact(ev)
 	ev.items = items
 	ev.next = 1
 	ev.hitPlayers = {}
+	ev.explodeT = 0
 end
 
+-- the front: pushes bodies and players, queues the band it swept for the destruction worker
 function server.shock(ev, dt)
 	local s = ev.s
 	local c = ev.center
 	local R = s.radius
+	local lv = ev.level
+	local r0 = ev.r
 	ev.r = math.min(R, ev.r + SHOCK_SPEED * dt)
 	shared.m.r = ev.r
+	if ev.r > r0 then
+		local area = 3.1416 * (ev.r * ev.r - r0 * r0)
+		ev.queue[#ev.queue + 1] = { r0 = r0, r1 = ev.r, n = math.max(1, math.floor(area * lv.density + 0.5)) }
+	end
 	-- bodies the front has reached
 	local done = 0
 	while ev.next <= #ev.items and ev.items[ev.next].d <= ev.r and done < SHOCK_PER_UPDATE do
@@ -277,24 +399,20 @@ function server.shock(ev, dt)
 				local out = VecSub(pos, c)
 				out[2] = 0
 				out = VecLength(out) > 0.01 and VecNormalize(out) or GetRandomDirection(1)
-				local k = (1 - it.d / R) ^ 0.8
-				local speed = 30 * k + 4
-				local massK = clamp(3000 / mass, 0.1, 1)
+				local k = (1 - it.d / R) ^ 0.7
+				local speed = (45 * k + 8) * lv.throw
+				local massK = clamp(5000 / mass, 0.2, 1)
 				ApplyBodyImpulse(it.b, pos, VecScale(VecNormalize(VecAdd(out, Vec(0, 0.45, 0))), mass * speed * massK))
 			end
 		end
 	end
-	-- holes and fires along the front
-	local k = 1 - ev.r / R
-	for i = 1, HOLE_PROBES do
+	-- explosions riding the inner part of the front
+	ev.explodeT = ev.explodeT - dt
+	if ev.explodeT <= 0 and ev.r < R * 0.6 then
+		ev.explodeT = 0.05
 		local a = math.random() * 6.2832
-		local p = VecAdd(c, Vec(math.cos(a) * ev.r, rnd(0.5, 8), math.sin(a) * ev.r))
-		QueryRequire("physical")
-		local hit, point = QueryClosestPoint(p, 2.5)
-		if hit then
-			MakeHole(point, 0.4 + 2.0 * k, 0.2 + 1.4 * k, 0.6 * k, true)
-			if s.fire and ev.r < R * 0.4 and i <= 2 then SpawnFire(point) end
-		end
+		local p = VecAdd(c, Vec(math.cos(a) * ev.r, rnd(1, 6), math.sin(a) * ev.r))
+		Explosion(p, clamp(lv.size * lerp(4, 2, ev.r / (R * 0.6)), 0.5, 4), ev.owner)
 	end
 	-- players: pushed once when the front passes them
 	for p in Players() do
@@ -320,6 +438,55 @@ function server.shock(ev, dt)
 		ev.t = 0
 		shared.m.phase = "aftermath"
 		shared.m.t = 0
+	end
+end
+
+-- The destruction worker: crater tiles first, then probes in the swept bands. A probe
+-- looks for the nearest solid thing within 3.5 m of a random point in the band (heights
+-- weighted towards the ground floors, so buildings lose their supports and collapse) and
+-- punches a hole there, sized by distance from the centre; hard materials only near the
+-- centre. Open ground is skipped. Everything stays within the per-step budget; the rest
+-- waits for the next step, so the collapse keeps going behind the front.
+function server.work(ev, dt)
+	local s = ev.s
+	local c = ev.center
+	local R = s.radius
+	local lv = ev.level
+	local budget, holes, probes, fires = HOLE_R2_BUDGET, 0, 0, 0
+	-- crater ring (at most half the budget per step)
+	local tr0 = ev.craterR
+	while ev.craterNext <= #ev.crater and budget > HOLE_R2_BUDGET * 0.5 and holes < HOLES_PER_UPDATE do
+		local tile = ev.crater[ev.craterNext]
+		ev.craterNext = ev.craterNext + 1
+		MakeHole(tile.pos, tr0, tr0 * 0.9, tr0 * 0.8, true)
+		budget = budget - tr0 * tr0
+		holes = holes + 1
+	end
+	while #ev.queue > 0 and probes < PROBES_PER_UPDATE and holes < HOLES_PER_UPDATE and budget > 0 do
+		local band = ev.queue[1]
+		band.n = band.n - 1
+		if band.n <= 0 then table.remove(ev.queue, 1) end
+		probes = probes + 1
+		local a = math.random() * 6.2832
+		local rad = math.sqrt(rnd(band.r0 * band.r0, band.r1 * band.r1))
+		local u = math.random()
+		local h = (u < 0.45) and rnd(0.3, 4) or ((u < 0.8) and rnd(4, 12) or rnd(12, 28))
+		local sample = VecAdd(c, Vec(math.cos(a) * rad, h, math.sin(a) * rad))
+		if ev.moonBody ~= 0 then QueryRejectBody(ev.moonBody) end
+		QueryRequire("physical")
+		local hit, point, n = QueryClosestPoint(sample, 3.5)
+		if hit and not (n[2] > 0.7 and point[2] - c[2] < 1.0) then
+			local k = clamp(rad / R, 0, 1)
+			local r0 = lv.size * (5.5 - 3.0 * k)
+			local r2 = r0 * 0.85 * clamp(1 - k / 0.45, 0, 1)   -- hard materials near the centre (r2 <= r1)
+			MakeHole(point, r0, r0 * 0.85, r2, true)
+			budget = budget - r0 * r0
+			holes = holes + 1
+			if s.fire and k < 0.7 and holes % 4 == 0 and fires < FIRES_PER_UPDATE then
+				SpawnFire(point)
+				fires = fires + 1
+			end
+		end
 	end
 end
 
@@ -402,23 +569,24 @@ function client.tick(dt)
 	end
 end
 
+-- the far moon: an opaque, depth-tested sprite with the angular size of the real sphere;
+-- once the voxel moon exists it draws itself and no sprite is drawn
 function client.render(dt)
 	local m = shared.m
 	if m.phase ~= "approach" and m.phase ~= "recede" then return end
+	if m.body ~= 0 and IsHandleValid(m.body) then return end
 	local cam = GetCameraTransform()
-	local center = Vec(m.x, m.y, m.z)
-	local dist = moonDistance(m.prog)
-	local true_pos = VecAdd(center, VecScale(Vec(m.dx, m.dy, m.dz), dist + MOON_RADIUS))
-	local toMoon = VecSub(true_pos, cam.pos)
-	local d = VecLength(toMoon)
-	local dir = VecScale(toMoon, 1 / d)
+	local moonPos = Vec(m.cx, m.cy, m.cz)
+	local toMoon = VecSub(moonPos, cam.pos)
+	local d = math.max(VecLength(toMoon), m.mr * 1.05)
+	local dir = VecScale(toMoon, 1 / VecLength(toMoon))
 	local spriteDist = math.min(d, SPRITE_DIST)
-	local ang = math.atan(MOON_RADIUS / math.max(d, 1))
-	local size = 2 * spriteDist * math.tan(ang)
+	local size = 2 * spriteDist * math.tan(math.asin(clamp(m.mr / d, 0, 0.999)))
 	local pos = VecAdd(cam.pos, VecScale(dir, spriteDist))
 	local t = Transform(pos, QuatLookAt(pos, cam.pos))
-	DrawSprite(client.glow, t, size * 1.6, size * 1.6, 1.0, 0.5, 0.3, 0.35 + 0.4 * m.prog, false, true)
-	DrawSprite(client.moon, t, size, size, 1.0, 0.95 - 0.35 * m.prog, 0.9 - 0.5 * m.prog, 1, false, false)
+	local red = m.prog
+	DrawSprite(client.glow, t, size * 1.5, size * 1.5, 1.0, 0.45, 0.25, 0.25 + 0.35 * red, true, true)
+	DrawSprite(client.moon, t, size, size, 1.0, 0.97 - 0.3 * red, 0.94 - 0.45 * red, 1, true, false)
 	if m.prog > 0.6 then
 		PointLight(VecAdd(cam.pos, VecScale(dir, 40)), 1, 0.4, 0.2, 6 * (m.prog - 0.6))
 	end
@@ -453,7 +621,7 @@ function client.update(dt)
 		ParticleEmissive(8, 0)
 		ParticleGravity(-10)
 		ParticleCollide(1)
-		for i = 1, 6 do SpawnParticle(VecAdd(center, Vec(0, 4, 0)), GetRandomDirection(rnd(15, 40)), rnd(1, 3)) end
+		for i = 1, 6 do SpawnParticle(VecAdd(center, Vec(0, m.mr * 0.8, 0)), GetRandomDirection(rnd(15, 40)), rnd(1, 3)) end
 	elseif m.t < 20 then
 		for i = 1, 4 do
 			local p = VecAdd(cam.pos, Vec(rnd(-30, 30), rnd(0, 10), rnd(-30, 30)))
@@ -469,7 +637,6 @@ function client.draw(dt)
 		local I = smooth(0.35, 1.0, m.prog)
 		UiSoundLoop("MOD/snd/rumble.ogg", 0.2 + 0.8 * I, 0.8 + 0.3 * I)
 		if I > 0.3 then UiSoundLoop("MOD/snd/wind.ogg", I * 0.8, 1.0) end
-		-- red edges
 		UiPush()
 			UiColor(0.6, 0.1, 0.05, 0.25 * I * s.tint)
 			UiRect(UiWidth(), UiHeight())
@@ -508,8 +675,10 @@ function client.draw(dt)
 			UiColor(1, 1, 1, 0.9)
 			if m.phase == "idle" then
 				UiText(tr("LMB: call the moon down on the aim point", "ЛКМ: обрушить луну в точку прицела"))
-			elseif m.phase == "approach" then
+			elseif m.phase == "approach" and m.body == 0 then
 				UiText(tr("RMB: send the moon back", "ПКМ: отправить луну обратно"))
+			elseif m.phase == "approach" then
+				UiText(tr("Too late to stop it!", "Остановить уже нельзя!"))
 			else
 				UiText(tr("Wait for the dust to settle", "Ждите, пока осядет пыль"))
 			end

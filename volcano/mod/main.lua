@@ -20,10 +20,16 @@ local CONE_W, CONE_H = 73, 26          -- voxels (cone vox: 73 x 26 x 73 in Tear
 local CRATER_D = 5                     -- crater depth in voxels
 local LAYER_TIME = 0.7                 -- s per layer rising
 local GROW_TIME = LAYERS * LAYER_TIME
-local MAX_BOMBS = 30
+local MAX_BOMBS = 40
 local MAX_CONES = 4
-local HOLES_PER_UPDATE = 3
-local FIRES_PER_UPDATE = 2
+local HOLES_PER_UPDATE = 6
+local FIRES_PER_UPDATE = 6
+local BLAST_RADII = 2.5               -- the final blast levels everything within this many cone radii
+local BLAST_SPEED = 30                -- m/s, how fast the blast front runs out
+local BLAST_DENSITY = 0.12            -- destruction probes per m^2
+local BLAST_R2_BUDGET = 900           -- per physics step: sum of hole radius^2
+local BLAST_HOLES = 40
+local BLAST_PROBES = 100
 local TREMOR_PER_UPDATE = 20
 local COOL_TIME = 15
 local CONE_FILES = { "MOD/vox/cone_1.vox", "MOD/vox/cone_2.vox", "MOD/vox/cone_3.vox", "MOD/vox/cone_4.vox",
@@ -162,16 +168,10 @@ function server.spawnLayer(v, k)
 		if ty == "shape" and shape == 0 then shape = ents[i] end
 	end
 	if body == 0 then return end
-	if not v.offset then
-		-- where the bottom centre of the model sits in body space, whatever the loader's origin convention
-		v.offset = Vec(0, 0, 0)
-		if shape ~= 0 then
-			local sx, sy, sz, svs = GetShapeSize(shape)
-			local bottom = TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * svs * 0.5, 0, sz * svs * 0.5))
-			v.offset = TransformToLocalPoint(GetBodyTransform(body), bottom)
-		end
-		v.final = Transform(VecSub(base.pos, QuatRotateVec(v.rot, v.offset)), v.rot)
-	end
+	-- first guess: the vox pivot is the centre of the bottom face (the game's convention). The real
+	-- footprint is measured from the next tick on (a freshly spawned shape may not report its
+	-- final transform yet) and the whole cone is moved onto the anchor (server.anchorCone).
+	if not v.final then v.final = Transform(base.pos, v.rot) end
 	local layer = { body = body, shapes = GetBodyShapes(body), t = 0, drop = drop }
 	v.layers[#v.layers + 1] = layer
 	server.cones[#server.cones + 1] = body
@@ -180,10 +180,28 @@ function server.spawnLayer(v, k)
 	shared.v.layers = #v.layers
 end
 
+function server.layerY(layer)
+	return -layer.drop * (1 - smooth(0, 1, layer.t / LAYER_TIME))
+end
+
 function server.placeLayer(v, layer)
-	local f = smooth(0, 1, layer.t / LAYER_TIME)
-	local y = -layer.drop * (1 - f)
-	SetBodyTransform(layer.body, Transform(VecAdd(v.final.pos, Vec(0, y, 0)), v.final.rot))
+	SetBodyTransform(layer.body, Transform(VecAdd(v.final.pos, Vec(0, server.layerY(layer), 0)), v.final.rot))
+end
+
+-- closed loop: where does the bottom layer really stand? move every layer so that its footprint
+-- centre is exactly under the anchor (the clicked point), whatever origin the vox loader used
+function server.anchorCone(v)
+	local l = v.layers[1]
+	if not l or l.t <= 0 or #l.shapes == 0 or not IsHandleValid(l.shapes[1]) then return end
+	local shape = l.shapes[1]
+	local sx, sy, sz, svs = GetShapeSize(shape)
+	local foot = TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * svs * 0.5, 0, sz * svs * 0.5))
+	local want = VecAdd(v.ground, Vec(0, -0.3 * v.vs * 4 + server.layerY(l), 0))
+	local err = VecSub(want, foot)
+	if VecLength(err) > 0.02 then
+		v.final = Transform(VecAdd(v.final.pos, err), v.final.rot)
+		for i = 1, #v.layers do server.placeLayer(v, v.layers[i]) end
+	end
 end
 
 function server.update(dt)
@@ -203,6 +221,7 @@ function server.update(dt)
 				server.placeLayer(v, l)
 			end
 		end
+		server.anchorCone(v)
 		sv.k = 0.1
 		if v.t >= GROW_TIME + 0.2 then server.setPhase(v, "rumble", v.rumbleT) end
 	elseif v.phase == "rumble" then
@@ -215,7 +234,7 @@ function server.update(dt)
 		sv.k = 0.7 + 0.3 * math.sin(v.t * 1.3) ^ 2
 		server.tremors(v, dt, sv.k)
 		server.setGlow(v, dt, 1.4)
-		v.bombAcc = v.bombAcc + dt * 3 * s.strength * (0.6 + 0.8 * sv.k)
+		v.bombAcc = v.bombAcc + dt * 6 * s.strength * (0.6 + 0.8 * sv.k)
 		if v.bombAcc >= 1 then
 			v.bombAcc = v.bombAcc - 1
 			server.launch(v, math.random() < 0.25)
@@ -228,9 +247,10 @@ function server.update(dt)
 				server.launch(v, false)
 			end
 		end
+		server.blastWork(v, dt)
 		sv.k = 0.6 * (1 - smooth(0, COOL_TIME, v.t))
 		server.setGlow(v, dt, 0.15 + 1.2 * (1 - smooth(0, COOL_TIME, v.t)))
-		if v.t >= COOL_TIME then
+		if v.t >= COOL_TIME and not v.blastR then
 			server.v = nil
 			sv.phase = "idle"
 			sv.k = 0
@@ -302,13 +322,13 @@ function server.launch(v, flow)
 	local pos, vel
 	local k = math.sqrt(s.strength) * (0.7 + 0.3 * v.scale / 4)
 	if flow then
-		pos = VecAdd(v.top, VecAdd(VecScale(out, v.R * 0.25), Vec(0, 0.6, 0)))
+		pos = VecAdd(v.top, VecAdd(VecScale(out, 6 * v.vs), Vec(0, 0.6, 0)))   -- inside the crater rim
 		vel = VecAdd(VecScale(out, rnd(3, 5)), Vec(0, 2, 0))
 	else
 		pos = VecAdd(v.top, Vec(0, 1.0, 0))
 		vel = VecAdd(VecScale(out, rnd(4, 11) * k), Vec(0, rnd(14, 22) * k, 0))
 	end
-	local bscale = clamp(v.scale / 3, 1, 2)
+	local bscale = clamp(v.scale / 2, 1.5, 3)
 	local ents = Spawn("<body dynamic='true'><vox file='MOD/vox/bomb.vox' scale='" .. bscale .. "'/></body>", Transform(pos, QuatEuler(rnd(0, 360), rnd(0, 360), 0)))
 	for i = 1, #ents do
 		if GetEntityType(ents[i]) == "body" then
@@ -316,7 +336,8 @@ function server.launch(v, flow)
 			SetTag(b, "volcano_bomb")
 			SetBodyVelocity(b, vel)
 			SetBodyAngularVelocity(b, Vec(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4)))
-			server.bombs[#server.bombs + 1] = { body = b, shapes = GetBodyShapes(b), t = 0, prevVel = VecCopy(vel), flow = flow, landed = false, glow = 1, glowT = 0 }
+			server.bombs[#server.bombs + 1] = { body = b, shapes = GetBodyShapes(b), t = 0, prevVel = VecCopy(vel), flow = flow, landed = false, glow = 1, glowT = 0, burnT = 0 }
+			if flow then v.lastFlow = pos else v.lastLaunch = pos end
 			local sv = shared.v
 			sv.launchN = sv.launchN + 1
 			break
@@ -351,6 +372,17 @@ function server.updateBombs(dt)
 				local hit = b.t > 0.3 and VecLength(VecSub(vel, b.prevVel)) > 6
 				local settled = b.flow and b.t > 1.5 and VecLength(vel) < 1
 				b.prevVel = vel
+				-- a lava flow burns and breaks what it rolls through
+				if b.flow and b.t > 0.5 and holes < HOLES_PER_UPDATE then
+					b.burnT = b.burnT - dt
+					if b.burnT <= 0 then
+						b.burnT = 0.25
+						local fp = GetBodyTransform(b.body).pos
+						MakeHole(fp, 1.4, 0.7, 0, true)
+						holes = holes + 1
+						if s.fire and fires < FIRES_PER_UPDATE then SpawnFire(fp) fires = fires + 1 end
+					end
+				end
 				if (hit or settled or b.t > 10) and holes < HOLES_PER_UPDATE then
 					b.landed = true
 					b.t = 0
@@ -358,16 +390,23 @@ function server.updateBombs(dt)
 					local pos = GetBodyTransform(b.body).pos
 					local k = math.sqrt(s.strength)
 					if not b.flow then
-						MakeHole(pos, 1.3 * k, 0.9 * k, 0.4 * k, false)
+						-- a heavy glowing rock: a real crater, sometimes a small explosion
+						MakeHole(pos, 2.6 * k, 2.0 * k, 1.0 * k, false)
 						holes = holes + 1
+						if math.random() < 0.33 then Explosion(pos, clamp(1.0 * k, 0.5, 2), v and v.owner or 0) end
 						for p in Players() do
 							local d = VecLength(VecSub(GetPlayerTransform(p).pos, pos))
 							if d < 2.5 then ApplyPlayerDamage(p, 0.15 * k, "volcano", v and v.owner or 0) end
 						end
 					end
-					if s.fire and fires < FIRES_PER_UPDATE then
-						SpawnFire(pos)
-						fires = fires + 1
+					if s.fire then
+						-- fires around the impact, so they catch and spread
+						for f = 1, 3 do
+							if fires < FIRES_PER_UPDATE then
+								SpawnFire(VecAdd(pos, Vec(rnd(-2, 2), rnd(0, 1), rnd(-2, 2))))
+								fires = fires + 1
+							end
+						end
 					end
 					local sv = shared.v
 					sv.impN = sv.impN + 1
@@ -405,9 +444,92 @@ function server.blast(v)
 	end
 	local r = (CRATER_D + 4) * vs * clamp(0.7 + 0.3 * k, 0.8, 1.3)
 	MakeHole(VecAdd(top, Vec(0, CRATER_D * vs * 0.5, 0)), r, r, r * 0.9, false)
-	v.burst = math.floor(8 + 8 * k)      -- launched 2 per step during the cool-down
+	v.burst = math.floor(12 + 12 * k)    -- launched 2 per step during the cool-down
+	-- the blast front: everything within BLAST_RADII cone radii is levelled over the next seconds
+	v.blastR = BLAST_RADII * v.R * clamp(0.8 + 0.2 * k, 0.8, 1.2)
+	v.front = 0
+	v.queue = {}
+	v.ringN = 0
+	QueryRequire("physical dynamic")
+	local list = QueryAabbBodies(VecSub(v.ground, Vec(v.blastR, 5, v.blastR)), VecAdd(v.ground, Vec(v.blastR, 30, v.blastR)))
+	v.throw = {}
+	for i = 1, math.min(#list, 200) do
+		if GetBodyPlayer(list[i]) == 0 and not HasTag(list[i], "volcano") then v.throw[#v.throw + 1] = list[i] end
+	end
 	shared.v.blastN = shared.v.blastN + 1
 	server.setPhase(v, "cool", COOL_TIME)
+end
+
+-- the blast worker: the front runs out, throws loose things, rings of explosions; probes in the
+-- swept band find what stands there and punch holes (hard materials too near the cone)
+function server.blastWork(v, dt)
+	if not v.blastR then return end
+	local s = v.s
+	local g = v.ground
+	if v.front < v.blastR then
+		local r0 = v.front
+		v.front = math.min(v.blastR, v.front + BLAST_SPEED * dt)
+		local area = 3.1416 * (v.front * v.front - r0 * r0)
+		v.queue[#v.queue + 1] = { r0 = r0, r1 = v.front, n = math.max(1, math.floor(area * BLAST_DENSITY + 0.5)) }
+		-- loose bodies are thrown outwards as the front passes them
+		local thrown = 0
+		for i = #v.throw, 1, -1 do
+			if thrown >= 30 then break end
+			local b = v.throw[i]
+			if not IsHandleValid(b) then
+				table.remove(v.throw, i)
+			else
+				local bp = GetBodyTransform(b).pos
+				local d = Vec(bp[1] - g[1], 0, bp[3] - g[3])
+				local dl = VecLength(d)
+				if dl <= v.front then
+					table.remove(v.throw, i)
+					thrown = thrown + 1
+					if IsBodyDynamic(b) then
+						local out = dl > 0.1 and VecScale(d, 1 / dl) or Vec(1, 0, 0)
+						local sp = 30 * (1 - dl / v.blastR) + 6
+						local m = GetBodyMass(b)
+						ApplyBodyImpulse(b, bp, VecScale(VecNormalize(VecAdd(out, Vec(0, 0.5, 0))), m * sp * clamp(4000 / math.max(m, 1), 0.2, 1)))
+					end
+				end
+			end
+		end
+		-- two rings of big explosions
+		local rings = { 1.3 * v.R, 2.0 * v.R }
+		local fired = 0
+		while v.ringN < 16 and fired < 2 and v.front >= rings[math.floor(v.ringN / 8) + 1] do
+			fired = fired + 1
+			local a = (v.ringN % 8) / 8 * 6.2832 + math.floor(v.ringN / 8) * 0.39
+			local rr = rings[math.floor(v.ringN / 8) + 1]
+			Explosion(VecAdd(g, Vec(math.cos(a) * rr, 1.5, math.sin(a) * rr)), 4, v.owner)
+			v.ringN = v.ringN + 1
+		end
+	end
+	local budget, holes, probes, fires = BLAST_R2_BUDGET, 0, 0, 0
+	while #v.queue > 0 and probes < BLAST_PROBES and holes < BLAST_HOLES and budget > 0 do
+		local band = v.queue[1]
+		band.n = band.n - 1
+		if band.n <= 0 then table.remove(v.queue, 1) end
+		probes = probes + 1
+		local a = math.random() * 6.2832
+		local rad = math.sqrt(rnd(band.r0 * band.r0, band.r1 * band.r1))
+		if rad > v.R * 0.9 then
+			local sample = VecAdd(g, Vec(math.cos(a) * rad, (math.random() < 0.6) and rnd(0.3, 4) or rnd(4, 14), math.sin(a) * rad))
+			for i = 1, #v.layers do QueryRejectBody(v.layers[i].body) end
+			QueryRequire("physical")
+			local hit, point, n = QueryClosestPoint(sample, 3)
+			if hit and not (n[2] > 0.7 and point[2] - g[2] < 1.0) then
+				local k = clamp(rad / v.blastR, 0, 1)
+				local r0 = (4.8 - 2.4 * k) * clamp(0.8 + 0.2 * s.strength, 0.8, 1.2)
+				local r2 = (k < 0.5) and r0 * 0.5 or 0
+				MakeHole(point, r0, r0 * 0.85, r2, true)
+				budget = budget - r0 * r0
+				holes = holes + 1
+				if s.fire and holes % 3 == 0 and fires < FIRES_PER_UPDATE then SpawnFire(point) fires = fires + 1 end
+			end
+		end
+	end
+	if v.front >= v.blastR and #v.queue == 0 then v.blastR = nil end
 end
 
 -- R: remove the cones (only while nothing erupts)

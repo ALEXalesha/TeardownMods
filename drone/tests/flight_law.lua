@@ -86,3 +86,5 @@ T.check(math.abs(pp[1] - playerStart[1]) + math.abs(pp[3] - playerStart[3]) < 0.
 T.check((H.calls.SetShapeLocalTransform or 0) == 0, "no per-tick shape edits on the dynamic drone body (" .. (H.calls.SetShapeLocalTransform or 0) .. ")")
 -- and the camera follows the drone every frame
 T.check(H.camera ~= nil, "camera on the drone")
+-- the fallback must not kick in when the engine does apply velocities
+T.check(T.env().server.d[1] == nil or T.env().server.d[1].mode ~= "kinematic", "normal flight stays in velocity mode")

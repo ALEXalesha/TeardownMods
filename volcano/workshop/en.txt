@@ -3,12 +3,12 @@ A magma core tool. Raise a volcano on the ground in a few seconds and watch it e
 
 [h2]Features[/h2]
 [list]
-[*]The cone grows out of the ground layer by layer
+[*]The cone grows out of the ground layer by layer, exactly where you clicked
 [*]Smoke column, tremors, glowing lava streams and crater
-[*]Lava bombs thrown in arcs: craters, fires, glowing trails
-[*]Lava flows roll down the slopes
+[*]Heavy lava bombs thrown in arcs: real craters through brick, explosions, spreading fires
+[*]Lava flows roll down the slopes and burn and break what they touch
 [*]Ash falls, the ground shakes, crater light, roar
-[*]Final blast takes the summit off; the dead cone stays
+[*]Final blast takes the summit off and levels everything within 2.5 cone radii; the dead cone stays
 [/list]
 [h2]Controls[/h2]
 [list]
@@ -28,6 +28,7 @@ A magma core tool. Raise a volcano on the ground in a few seconds and watch it e
 [list]
 [*]One volcano erupts at a time; up to 4 dead cones are kept
 [*]The cone is placed on the aim point and may cut into uneven ground
+[*]Heavy on big maps; lower the strength if the game stutters
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

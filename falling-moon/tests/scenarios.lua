@@ -7,8 +7,8 @@ local function sh() return T.sharedOf() end
 local function callsOf(n) return H.calls[n] or 0 end
 
 T.budget("ApplyBodyImpulse", 2 * 80)
-T.budget("MakeHole", 45)
-T.budget("QueryClosestPoint", 90)
+T.budget("MakeHole", 60)
+T.budget("QueryClosestPoint", 140 + 5)   -- worker probes + the front
 T.budget("QueryAabbBodies", 2)
 T.budget("SpawnFire", 4)
 T.budget("SetEnvironmentProperty", 3)
@@ -24,6 +24,8 @@ for i = 1, 150 do
 	local r = 3 + math.random() * 120
 	bodies[i] = H.addBody { pos = V(math.cos(a) * r, 0.25, -69 + math.sin(a) * r), mass = 10 + math.random() * 200 }
 end
+local startDist = {}
+for i = 1, #bodies do local p = H.bodies[bodies[i]].pos startDist[i] = math.sqrt(p[1] ^ 2 + (p[3] + 69) ^ 2) end
 local orig = { H.env.skyboxtint[1], H.env.skyboxtint[2], H.env.skyboxtint[3] }
 
 T.load("main.lua", "main")
@@ -49,7 +51,7 @@ T.check(callsOf("UiSoundLoop") > 100, "rumble loop")
 local imp0 = callsOf("ApplyBodyImpulse")
 T.frames(600)
 T.check(callsOf("ApplyBodyImpulse") > imp0, "tremors push bodies in the second half")
-T.check(H.env.skyboxtint[2] < orig[2] - 0.1, string.format("sky turns red (tint g %.2f)", H.env.skyboxtint[2]))
+T.check(#H.envLog == 0, "the sky is never rewritten with the default settings (no flicker)")
 T.check((H.sideCalls.client.SetEnvironmentProperty or 0) == 0, "sky tint set only by server code")
 T.check(callsOf("ShakeCamera") > 100, "camera shakes")
 
@@ -81,9 +83,9 @@ local c = V(sh().m.x, sh().m.y, sh().m.z)
 for i = 1, #bodies do
 	local b = H.bodies[bodies[i]]
 	local d = sub(b.pos, c)
-	if len(V(d[1], 0, d[3])) < 140 and (b.vel[1] * d[1] + b.vel[3] * d[3]) > 0 then out = out + 1 end
+	if startDist[i] < 140 and len(V(d[1], 0, d[3])) > startDist[i] + 3 then out = out + 1 end
 end
-T.check(out > 30, "bodies thrown outwards (" .. out .. ")")
+T.check(out > 30, "bodies thrown outwards by more than 3 m (" .. out .. ")")
 T.check(H.fires > 0, "fires started")
 T.check(H.P(1).damage > 0, "player hit by the shockwave")
 T.check(callsOf("MakeHole") > 50, "holes punched along the front (" .. callsOf("MakeHole") .. ")")
@@ -127,4 +129,4 @@ T.drawOptions(1)
 T.check(H.reg["savegame.mod.duration"] == 60, "options: time to impact 60 s")
 H.uiClicks["Reset to defaults"] = true
 T.drawOptions(1)
-T.check(H.reg["savegame.mod.duration"] == 120 and H.reg["savegame.mod.radius"] == 150, "options: reset")
+T.check(H.reg["savegame.mod.duration"] == 120 and H.reg["savegame.mod.radius"] == 200, "options: reset")

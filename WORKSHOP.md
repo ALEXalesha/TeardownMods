@@ -80,11 +80,11 @@ Mods you already checked in the game and called perfect come first; changed and 
 | 9 | telekinesis | checked: perfect |
 | 10 | gravity | checked: perfect |
 | 11 | remote | checked: perfect; since then one small fix (hopping to another car while the player is frozen) |
-| 12 | drone | reworked after your test (flight control) - check it in game first |
-| 13 | trampoline-floor | reworked after your test (bounce) - check it in game first |
-| 14 | falling-moon | reworked after your test (3D moon, destruction) - check it in game first |
-| 15 | volcano | new, not checked in game yet |
-| 16 | tsunami | new, not checked in game yet |
+| 12 | drone | still not flying in your second test; now with a fallback flight mode and a debug line - check it in game first |
+| 13 | trampoline-floor | reworked after your first test; your second test: OK |
+| 14 | falling-moon | sky flicker removed, destruction stronger - check it in game first |
+| 15 | volcano | reworked after your test (anchor, destruction) - check it in game first |
+| 16 | tsunami | made much stronger after your test - check it in game first |
 
 For all 16 only the Workshop metadata changed besides that (info.txt description and tags, thumb.jpg,
 square preview.jpg).
@@ -167,11 +167,11 @@ Asset, Vehicle, Tool, preview.jpg до 1 МБ, локальные моды в `D
 | 9 | telekinesis | проверен: идеально |
 | 10 | gravity | проверен: идеально |
 | 11 | remote | проверен: идеально; с тех пор одна мелкая правка (пересесть в другую машину, когда тело игрока заморожено) |
-| 12 | drone | переделан после вашей проверки (управление полётом) - сначала проверить в игре |
-| 13 | trampoline-floor | переделан после вашей проверки (отскок) - сначала проверить в игре |
-| 14 | falling-moon | переделан после вашей проверки (объёмная луна, разрушения) - сначала проверить в игре |
-| 15 | volcano | новый, в игре ещё не проверен |
-| 16 | tsunami | новый, в игре ещё не проверен |
+| 12 | drone | во второй проверке всё ещё не летал; теперь с запасным режимом полёта и строкой отладки - сначала проверить в игре |
+| 13 | trampoline-floor | переделан после первой проверки; вторая проверка: OK |
+| 14 | falling-moon | убрано мерцание неба, разрушения сильнее - сначала проверить в игре |
+| 15 | volcano | переделан после вашей проверки (привязка, разрушения) - сначала проверить в игре |
+| 16 | tsunami | сильно усилен после вашей проверки - сначала проверить в игре |
 
 Кроме этого у всех 16 изменились только данные для Мастерской (описание и теги в info.txt, thumb.jpg,
 квадратный preview.jpg).

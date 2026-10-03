@@ -1,29 +1,29 @@
 [h1]Falling Moon[/h1]
-A telescope that calls the moon down on the aim point. Over 1-5 minutes it grows in the sky, the ground trembles, the sky turns red and a countdown runs; for the last seconds it is a real voxel moon that comes down and takes almost everything around with it.
+A telescope that calls the moon down on the aim point. Over 1-5 minutes it grows in the sky, the ground trembles, dust and wind rise and a countdown runs; then it slams into the ground, sits in a huge crater as a real voxel moon, and its shockwave takes almost everything around with it.
 
 [h2]Features[/h2]
 [list]
-[*]A real 3D moon: shaded and hidden behind trees while far away, a real voxel sphere for the last seconds
-[*]Tremors, wind and lifting debris build up; red sky; countdown with beeps and a roar
-[*]Impact: blinding flash, a crater around the embedded moon
-[*]Shockwave that takes down almost everything in the radius, hard materials near the centre too
-[*]Explosions, fires, objects thrown hard, dust; the sky recovers slowly
-[*]Send it back with RMB while it is still far away
+[*]A solid-looking moon that hides behind trees and buildings, with an orange heat glow on its edge
+[*]No flickering: the sky is left alone; tremors, wind, lifted dust and a growing camera shake build up instead
+[*]Countdown with beeps and a roar
+[*]Impact: blinding flash, a real voxel moon in a huge crater, a shockwave ring
+[*]Shockwave that takes down practically everything within 200 m, hard materials near the centre too
+[*]Explosions, fires, objects thrown hard, dust; send it back with RMB before it lands
 [/list]
 [h2]Controls[/h2]
 [list]
 [*][b]LMB[/b] - call the moon down on the aim point
-[*][b]RMB[/b] - send it back (while it is still far away)
+[*][b]RMB[/b] - send it back
 [/list]
 [h2]Settings (Mod Manager - the mod - Options)[/h2]
 [list]
 [*]Time until impact 60-300 s: [i]120 s[/i]
-[*]Shockwave radius 50-300 m: [i]150 m[/i]
+[*]Shockwave radius 50-300 m: [i]200 m[/i]
 [*]Destruction strong / heavy / total: [i]total[/i]
 [*]Moon size 30 / 45 / 60 m: [i]45 m[/i]
 [*]Damage to players off / normal / deadly: [i]normal[/i]
 [*]Fires: [i]on[/i]
-[*]Red sky 0-1: [i]0.8[/i]
+[*]Red sky (set once, restored once): [i]off[/i]
 [*]Tremors and wind: [i]on[/i]
 [*]Countdown: [i]show[/i]
 [/list]

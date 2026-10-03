@@ -5,8 +5,8 @@ local function srv() return T.env().server end
 local function callsOf(n) return H.calls[n] or 0 end
 
 T.budget("Spawn", 2)
-T.budget("MakeHole", 3 + 1)
-T.budget("SpawnFire", 2)
+T.budget("MakeHole", 40 + 6 + 1)
+T.budget("SpawnFire", 6)
 T.budget("SpawnParticle", 50)
 T.budget("SetBodyTransform", 7)
 T.budget("ApplyBodyImpulse", 20)

@@ -11,10 +11,10 @@ local function tr(pair) if ru() then return pair[2] end return pair[1] end
 local TITLE = { "Tsunami", "Цунами" }
 local SUBTITLE = { "Settings apply to the next wave", "Настройки действуют со следующей волны" }
 local ROWS = {
-	{ kind = "slider", key = "height", label = { "Wave height", "Высота волны" }, default = 9.0, min = 3, max = 20, fmt = { "%.0f m", "%.0f м" }, int = false, step = 1 },
-	{ kind = "slider", key = "speed", label = { "Wave speed", "Скорость волны" }, default = 14.0, min = 8, max = 30, fmt = { "%.0f m/s", "%.0f м/с" }, int = false, step = 1 },
+	{ kind = "slider", key = "height", label = { "Wave height", "Высота волны" }, default = 14.0, min = 3, max = 25, fmt = { "%.0f m", "%.0f м" }, int = false, step = 1 },
+	{ kind = "slider", key = "speed", label = { "Wave speed", "Скорость волны" }, default = 18.0, min = 8, max = 35, fmt = { "%.0f m/s", "%.0f м/с" }, int = false, step = 1 },
 	{ kind = "slider", key = "flood", label = { "Flood level behind it", "Уровень затопления за ней" }, default = 1.5, min = 0, max = 4, fmt = { "%.1f m", "%.1f м" }, int = false, step = 0.5 },
-	{ kind = "slider", key = "power", label = { "Damage to weak structures", "Разрушение слабых построек" }, default = 1.0, min = 0, max = 2, fmt = { "x%.1f", "x%.1f" }, int = false, step = 0.1 },
+	{ kind = "slider", key = "power", label = { "Damage to weak structures", "Разрушение слабых построек" }, default = 1.5, min = 0, max = 3, fmt = { "x%.1f", "x%.1f" }, int = false, step = 0.1 },
 	{ kind = "choice", key = "siren", label = { "Warning siren", "Сирена" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 }
 

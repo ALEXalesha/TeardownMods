@@ -55,6 +55,7 @@ function readSettings()
 		sens = clamp(getF("sens", 1), 0.2, 3),
 		fov = clamp(getF("fov", 90), 60, 110),
 		freeze = getB("freeze", true),
+		debug = getB("debug", true),
 	}
 end
 
@@ -128,10 +129,10 @@ function server.deploy(p)
 	local eye = GetPlayerEyeTransform(p)
 	local fwd = TransformToParentVec(eye, Vec(0, 0, -1))
 	local flat = VecNormalize(Vec(fwd[1], 0, fwd[3]))
-	local pos = VecAdd(eye.pos, VecAdd(VecScale(flat, 1.2), Vec(0, 0.3, 0)))
+	local pos = VecAdd(eye.pos, VecAdd(VecScale(flat, 2.5), Vec(0, 0.5, 0)))
 	QueryRejectPlayer(p)
 	QueryRequire("physical")
-	local hit, dist = QueryRaycast(eye.pos, flat, 1.4)
+	local hit, dist = QueryRaycast(eye.pos, flat, 2.7)
 	if hit then pos = VecAdd(eye.pos, VecAdd(VecScale(flat, math.max(0.3, dist - 0.5)), Vec(0, 0.3, 0))) end
 	local yaw = math.deg(math.atan2(-flat[1], -flat[3]))
 	local ents = Spawn(DRONE_XML, Transform(pos, QuatEuler(0, yaw, 0)))
@@ -203,7 +204,7 @@ function server.drop(p)
 	if not d or not d.piloting or d.bombs <= 0 or not IsHandleValid(d.body) then return end
 	local bt = GetBodyTransform(d.body)
 	local pos = VecAdd(bt.pos, Vec(0, -0.35, 0))
-	local vel = GetBodyVelocity(d.body)
+	local vel = (d.mode == "kinematic") and VecCopy(d.kvel) or GetBodyVelocity(d.body)
 	d.bombs = d.bombs - 1
 	local st = sd(p)
 	st.bombs = d.bombs
@@ -281,7 +282,12 @@ function server.fly(p, d, dt)
 	local g = GetGravity()
 
 	-- crash: the velocity is not what our controller left it at (something hit us)
-	if d.expect and d.age > 0.5 and VecLength(VecSub(vel, d.expect)) > s.crash then
+	if d.mode == "kinematic" then
+		server.flyKinematic(p, d, dt, st, s)
+		return
+	end
+	if d.expect and d.age > 1.5 and VecLength(VecSub(vel, d.expect)) > s.crash then
+		st.lastCrash = string.format("dv %.1f", VecLength(VecSub(vel, d.expect)))
 		server.crash(p, d, bt.pos)
 		return
 	end
@@ -303,9 +309,31 @@ function server.fly(p, d, dt)
 
 	local f, side, u = 0, 0, 0
 	if d.piloting and not lost then f, side, u = sticks(p, d) end
+	server.debugInput(p, d, st)
 	local fwd, right = yawFrame(d.yaw)
 	local desired = VecAdd(VecScale(fwd, f * s.speed), VecScale(right, side * s.speed))
 	desired = Vec(desired[1], lost and -0.6 or u * CLIMB, desired[3])
+
+	-- fallback that cannot fail: if the body does not follow our velocity (input held but no
+	-- progress, or sinking with no input) for half a second, fly it kinematically instead
+	if u ~= 0 or not d.refY then d.refY = bt.pos[2] end
+	if motors and d.age > 0.3 then
+		local want = VecLength(desired)
+		local stuck
+		if want > 1 then
+			stuck = VecDot(vel, VecScale(desired, 1 / want)) < 0.3 * want
+		else
+			stuck = bt.pos[2] < d.refY - 0.4        -- losing height with nothing pressed
+		end
+		if stuck and not d.stuckT then d.stuckFrom = VecCopy(bt.pos) end
+		d.stuckT = stuck and (d.stuckT or 0) + dt or nil
+		if d.stuckT and d.stuckT >= ((want > 1) and 0.5 or 0.25) then
+			-- back to where it got stuck (its hover height), then fly kinematically
+			server.goKinematic(d, st, Transform(Vec(bt.pos[1], math.max(bt.pos[2], d.refY), bt.pos[3]), bt.rot))
+			server.flyKinematic(p, d, dt, st, s)
+			return
+		end
+	end
 
 	if motors then
 		-- velocity follows the sticks with a first-order response, limited acceleration,
@@ -325,6 +353,70 @@ function server.fly(p, d, dt)
 		d.expect = VecAdd(vel, VecScale(g, dt))
 		st.thrust = 0
 	end
+	st.yaw = d.yaw
+	st.speed = VecLength(vel)
+	server.animate(d, st, dt)
+end
+
+-- what the server sees of the pilot's keys, for the debug line
+function server.debugInput(p, d, st)
+	local function k(name, label) return InputDown(name, p) and label or nil end
+	local keys = {}
+	for _, kv in ipairs({ { "up", "W" }, { "down", "S" }, { "left", "A" }, { "right", "D" }, { "jump", "Space" }, { "crouch", "Ctrl" } }) do
+		local l = k(kv[1], kv[2])
+		if l then keys[#keys + 1] = l end
+	end
+	st.srvKeys = table.concat(keys, " ")
+	local c = {}
+	if d.input.f > 0 then c[#c + 1] = "W" elseif d.input.f < 0 then c[#c + 1] = "S" end
+	if d.input.s > 0 then c[#c + 1] = "D" elseif d.input.s < 0 then c[#c + 1] = "A" end
+	if d.input.u > 0 then c[#c + 1] = "Space" elseif d.input.u < 0 then c[#c + 1] = "Ctrl" end
+	st.callKeys = table.concat(c, " ")
+	st.mode = d.mode or "velocity"
+end
+
+function server.goKinematic(d, st, bt)
+	d.mode = "kinematic"
+	st.mode = "kinematic"
+	d.kpos = VecCopy(bt.pos)
+	d.kvel = Vec(0, 0, 0)
+	SetBodyDynamic(d.body, false)
+end
+
+-- kinematic flight: the body is static and moved every physics step; it stops at walls
+function server.flyKinematic(p, d, dt, st, s)
+	local f, side, u = 0, 0, 0
+	local dist = VecLength(VecSub(d.kpos, GetPlayerTransform(p).pos))
+	local lost = dist > s.range
+	st.weak = clamp((dist - 0.75 * s.range) / (0.25 * s.range), 0, 1)
+	st.lost = lost
+	if s.battery then
+		d.battery = math.max(0, d.battery - dt / (s.minutes * 60))
+		st.battery = d.battery
+	end
+	local motors = not s.battery or d.battery > 0
+	if d.piloting and not lost and motors then f, side, u = sticks(p, d) end
+	server.debugInput(p, d, st)
+	local fwd, right = yawFrame(d.yaw)
+	local desired = VecAdd(VecScale(fwd, f * s.speed), VecScale(right, side * s.speed))
+	desired = Vec(desired[1], (lost or not motors) and -2 or u * CLIMB, desired[3])
+	local k = (VecLength(desired) < 0.1) and 15 or RESPONSE       -- brake crisply when the sticks are released
+	d.kvel = VecAdd(d.kvel, VecScale(VecSub(desired, d.kvel), 1 - math.exp(-k * dt)))
+	local step = VecScale(d.kvel, dt)
+	local sl = VecLength(step)
+	if sl > 1e-4 then
+		QueryRejectBody(d.body)
+		QueryRequire("physical")
+		local hit, hd = QueryRaycast(d.kpos, VecScale(step, 1 / sl), sl + 0.6)
+		if hit then
+			step = VecScale(step, math.max(0, hd - 0.6) / sl)
+			d.kvel = Vec(0, 0, 0)
+		end
+	end
+	d.kpos = VecAdd(d.kpos, step)
+	SetBodyTransform(d.body, Transform(d.kpos, QuatEuler(-f * 12, d.yaw, -side * 12)))
+	st.thrust = motors and clamp(0.35 + VecLength(d.kvel) / s.speed * 0.65, 0, 1) or 0
+	st.speed = VecLength(d.kvel)
 	st.yaw = d.yaw
 	server.animate(d, st, dt)
 end
@@ -456,6 +548,11 @@ function client.pilot(st, s, dt)
 	local f = axis("up", "down")
 	local side = axis("right", "left")
 	local u = axis("jump", "crouch")
+	local keys = {}
+	for _, kv in ipairs({ { "up", "W" }, { "down", "S" }, { "left", "A" }, { "right", "D" }, { "jump", "Space" }, { "crouch", "Ctrl" } }) do
+		if InputDown(kv[1]) then keys[#keys + 1] = kv[2] end
+	end
+	client.cliKeys = table.concat(keys, " ")
 	client.camYaw = client.camYaw - math.deg(InputValue("camerax")) * s.sens
 	client.camPitch = clamp(client.camPitch - math.deg(InputValue("cameray")) * s.sens, -85, 35)
 	local sent = client.sent
@@ -602,6 +699,7 @@ function client.draw(dt)
 			end
 			client.drawHud(st)
 		end
+		client.drawDebug(st, true)
 		return
 	end
 	if GetPlayerTool() ~= TOOL then return end
@@ -617,6 +715,23 @@ function client.draw(dt)
 		else
 			UiText(tr("LMB: launch the drone", "ЛКМ: запустить дрон"))
 		end
+	UiPop()
+end
+
+-- one small line for in-game diagnosis (setting "Debug line", on by default in this version)
+function client.drawDebug(st, piloting)
+	if not readSettings().debug or not st then return end
+	local line = string.format("drone: mode %s | client %s | server %s | sent %s | speed %.1f m/s | camera %s | crashes %d%s",
+		st.mode or "velocity", (client.cliKeys and client.cliKeys ~= "") and client.cliKeys or "-",
+		(st.srvKeys and st.srvKeys ~= "") and st.srvKeys or "-", (st.callKeys and st.callKeys ~= "") and st.callKeys or "-",
+		st.speed or 0, piloting and "drone" or "player", st.crashN or 0, st.lastCrash and (" (" .. st.lastCrash .. ")") or "")
+	UiPush()
+		UiTranslate(20, UiHeight() - 24)
+		UiAlign("left middle")
+		UiFont("regular.ttf", 16)
+		UiTextShadow(0, 0, 0, 0.8, 1)
+		UiColor(1, 1, 0.6, 0.95)
+		UiText(line)
 	UiPop()
 end
 

@@ -69,6 +69,21 @@ def moon_png(path, size=512, seed=1):
     assert lit > dark * 2, (lit, dark)
 
 
+def shock_png(path, size=512):
+    """Shockwave ring: a bright thin edge fading inwards, transparent centre."""
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    r = np.sqrt(((xx / (size - 1) - 0.5) * 2) ** 2 + ((yy / (size - 1) - 0.5) * 2) ** 2)
+    edge = np.clip(1 - np.abs(r - 0.93) / 0.06, 0, 1) ** 1.5
+    inner = np.clip((r - 0.55) / 0.38, 0, 1) ** 3 * 0.35 * (r < 0.93)
+    a = np.clip(edge + inner, 0, 1)
+    arr = np.zeros((size, size, 4), np.uint8)
+    arr[..., 0] = 255
+    arr[..., 1] = 230
+    arr[..., 2] = 200
+    arr[..., 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(arr, "RGBA").save(path)
+
+
 def glow_png(path, size=256):
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
     r = np.sqrt(((xx / (size - 1) - 0.5) * 2) ** 2 + ((yy / (size - 1) - 0.5) * 2) ** 2)
@@ -124,4 +139,5 @@ if __name__ == "__main__":
     art.dot_png(os.path.join(MOD, "ui", "dot.png"))
     moon_png(os.path.join(MOD, "ui", "moon.png"))
     glow_png(os.path.join(MOD, "ui", "glow.png"))
+    shock_png(os.path.join(MOD, "ui", "shock.png"))
     build_preview()

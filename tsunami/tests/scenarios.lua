@@ -6,8 +6,8 @@ local function callsOf(n) return H.calls[n] or 0 end
 
 T.budget("ApplyBodyImpulse", 60)
 T.budget("QueryAabbBodies", 2)
-T.budget("MakeHole", 8)
-T.budget("QueryRaycast", 10 + 6 + 2)
+T.budget("MakeHole", 24)
+T.budget("QueryRaycast", 30 + 6 + 2)
 T.budget("SpawnParticle", 30)
 T.budget("SetProperty", 8)
 
@@ -52,7 +52,7 @@ T.check(H.entities[sea].props.wave > 0.8 and H.entities[sea].props.foam > 0.9, s
 local s0 = sh().ts.s
 T.frames(120)
 local v = (sh().ts.s - s0) / 2
-T.check(math.abs(v - 14) < 0.7, string.format("front moves at the set speed (%.1f m/s)", v))
+T.check(math.abs(v - 18) < 0.9, string.format("front moves at the set speed (%.1f m/s)", v))
 local spritesMax, badDepth = 0, 0
 T.frameHooks[#T.frameHooks + 1] = function()
 	spritesMax = math.max(spritesMax, #H.sprites)
@@ -83,7 +83,7 @@ for _, cube in ipairs(H.cubes) do
 	if cube.material == "hardmasonry" then th = th + 1 if not cube.alive then rh = rh + 1 end end
 end
 T.check(rw / tw >= 0.4, string.format("wooden structures torn (%.0f %%)", 100 * rw / tw))
-T.check(rm / tm < rw / tw * 0.5, string.format("masonry much less (%.0f %%)", 100 * rm / tm))
+T.check(rm / tm >= 0.3, string.format("masonry breached too (%.0f %%)", 100 * rm / tm))
 T.check(rh == 0, "hard masonry untouched")
 
 -- backwash and the end
@@ -130,4 +130,4 @@ T.drawOptions(1)
 T.check(H.reg["savegame.mod.height"] == 3, "options: wave height 3 m")
 H.uiClicks["Reset to defaults"] = true
 T.drawOptions(1)
-T.check(H.reg["savegame.mod.height"] == 9 and H.reg["savegame.mod.speed"] == 14, "options: reset")
+T.check(H.reg["savegame.mod.height"] == 14 and H.reg["savegame.mod.speed"] == 18, "options: reset")

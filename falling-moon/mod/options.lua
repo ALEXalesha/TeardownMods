@@ -12,12 +12,12 @@ local TITLE = { "Falling Moon", "Падающая луна" }
 local SUBTITLE = { "Settings apply to the next moon", "Настройки действуют со следующей луны" }
 local ROWS = {
 	{ kind = "slider", key = "duration", label = { "Time until impact", "Время до удара" }, default = 120.0, min = 60, max = 300, fmt = { "%.0f s", "%.0f с" }, int = false, step = 10 },
-	{ kind = "slider", key = "radius", label = { "Shockwave radius", "Радиус ударной волны" }, default = 150.0, min = 50, max = 300, fmt = { "%.0f m", "%.0f м" }, int = false, step = 10 },
+	{ kind = "slider", key = "radius", label = { "Shockwave radius", "Радиус ударной волны" }, default = 200.0, min = 50, max = 300, fmt = { "%.0f m", "%.0f м" }, int = false, step = 10 },
 	{ kind = "choice", key = "damage", label = { "Damage to players", "Урон игрокам" }, default = 1, choices = { { 0, "Off", "Нет" }, { 1, "Normal", "Обычный" }, { 2, "Deadly", "Смертельный" } }, int = true },
 	{ kind = "choice", key = "destruction", label = { "Destruction", "Разрушения" }, default = 3, choices = { { 1, "Strong", "Сильные" }, { 2, "Heavy", "Тяжёлые" }, { 3, "Total", "Полные" } }, int = true },
 	{ kind = "choice", key = "moonsize", label = { "Moon size", "Размер луны" }, default = 45, choices = { { 30, "30 m", "30 м" }, { 45, "45 m", "45 м" }, { 60, "60 m", "60 м" } }, int = true },
 	{ kind = "choice", key = "fire", label = { "Fires", "Пожары" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
-	{ kind = "slider", key = "tint", label = { "Red sky", "Красное небо" }, default = 0.8, min = 0, max = 1, fmt = { "%.1f", "%.1f" }, int = false, step = 0.1 },
+	{ kind = "choice", key = "redsky", label = { "Red sky (set once, no flicker)", "Красное небо (один раз, без мерцания)" }, default = false, choices = { { false, "Off", "Выкл" }, { true, "On", "Вкл" } } },
 	{ kind = "choice", key = "tremors", label = { "Tremors and wind", "Толчки и ветер" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 	{ kind = "choice", key = "countdown", label = { "Countdown", "Обратный отсчёт" }, default = true, choices = { { true, "Show", "Показывать" }, { false, "Hide", "Скрыть" } } },
 }

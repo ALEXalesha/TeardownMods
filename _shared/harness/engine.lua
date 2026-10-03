@@ -590,7 +590,10 @@ A.SetBodyTransform = function(h, t) local b = B(h, "SetBodyTransform"); if b the
 A.GetBodyMass = function(h) local b = B(h, "GetBodyMass"); if not b or not b.dynamic then return 0 end return b.mass end
 A.IsBodyDynamic = function(h) local b = B(h, "IsBodyDynamic"); return b ~= nil and b.dynamic end
 A.SetBodyDynamic = function(h, d) local b = B(h, "SetBodyDynamic"); if b then b.dynamic = d end end
-A.SetBodyVelocity = function(h, v) local b = B(h, "SetBodyVelocity"); if b then b.vel = A.VecCopy(v); b.active = true end end
+A.SetBodyVelocity = function(h, v)
+	local b = B(h, "SetBodyVelocity")
+	if b and not H.ignoreBodyVelocity then b.vel = A.VecCopy(v); b.active = true end
+end
 A.GetBodyVelocity = function(h) local b = B(h, "GetBodyVelocity"); if not b then return V() end return A.VecCopy(b.vel) end
 A.GetBodyVelocityAtPos = function(h, p) local b = B(h, "GetBodyVelocityAtPos"); if not b then return V() end return A.VecAdd(b.vel, A.VecCross(b.angvel, A.VecSub(p, b.pos))) end
 A.SetBodyAngularVelocity = function(h, v) local b = B(h, "SetBodyAngularVelocity"); if b then b.angvel = A.VecCopy(v) end end
@@ -751,10 +754,10 @@ A.GetJointShapes = function(j) local jj = H.joints[j]; return jj and { jj.shapes
 A.GetJointOtherShape = function(j, s) local jj = H.joints[j]; if not jj then return 0 end if jj.shapes[1] == s then return jj.shapes[2] end return jj.shapes[1] end
 A.DetachJointFromShape = function(j, s) local jj = H.joints[j]; if jj then jj.broken = true; H.note("joint detached " .. j) end end
 A.GetJointedBodies = function(b) return {} end
-A.SetJointMotor = function() end
-A.SetJointMotorTarget = function() end
+A.SetJointMotor = function(j, vel, strength) local jj = H.joints[j]; if jj then jj.motorVel = vel; jj.target = nil end end
+A.SetJointMotorTarget = function(j, target, maxVel, strength) local jj = H.joints[j]; if jj then jj.target = target; jj.maxVel = maxVel or 3; jj.motorVel = nil end end
 A.GetJointLimits = function() return 0, 0 end
-A.GetJointMovement = function() return 0 end
+A.GetJointMovement = function(j) local jj = H.joints[j]; return jj and jj.angle or 0 end
 
 ---------------------------------------------------------------------------
 -- spawning, holes, fx
@@ -784,6 +787,28 @@ local function parseAttr(s, name)
 	return s:match(name .. "%s*=%s*'([^']*)'") or s:match(name .. '%s*=%s*"([^"]*)"')
 end
 
+H.pendingShapes = {}
+function H.revealShapes()
+	local keep = {}
+	for _, sh in ipairs(H.pendingShapes) do
+		local s = H.shapes[sh]
+		if s and s.revealFrame and H.frame >= s.revealFrame then
+			s.local_ = s.realLocal
+			s.realLocal, s.revealFrame = nil, nil
+		elseif s then
+			keep[#keep + 1] = sh
+		end
+	end
+	H.pendingShapes = keep
+end
+function H.attrTransform(attrs)
+	local pos, rot = A.Vec(0, 0, 0), A.Quat()
+	local ps = parseAttr(attrs, "pos")
+	if ps then local a, b, c = ps:match("(%S+)%s+(%S+)%s+(%S+)") if a then pos = A.Vec(tonumber(a), tonumber(b), tonumber(c)) end end
+	local rs = parseAttr(attrs, "rot")
+	if rs then local a, b, c = rs:match("(%S+)%s+(%S+)%s+(%S+)") if a then rot = A.QuatEuler(tonumber(a), tonumber(b), tonumber(c)) end end
+	return A.Transform(pos, rot)
+end
 A.Spawn = function(xml, transform, allowStatic, jointExisting)
 	local content = xml
 	if not xml:find("<") then
@@ -792,11 +817,13 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 	end
 	local out = {}
 	local cur = nil
+	local lastVox = nil
 	-- every <body> creates a body; every <vox>/<voxbox> a shape
 	for tag, attrs in content:gmatch("<(%w+)([^>]*)>") do
 		if tag == "body" then
 			local dyn = parseAttr(attrs, "dynamic")
-			cur = H.addBody { pos = transform.pos, rot = transform.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
+			local bt = A.TransformToParentTransform(transform, H.attrTransform(attrs))
+			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
 			out[#out + 1] = cur
 			H.bodies[cur].spawnedXml = content
 		elseif tag == "vox" or tag == "voxbox" then
@@ -823,7 +850,23 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			for k = 1, math.max(1, n) do
 				local sh = newHandle()
 				local size = sizes and sizes[k] and { sizes[k][1], sizes[k][2], sizes[k][3] } or nil
-				H.shapes[sh] = { handle = sh, body = cur, local_ = A.Transform(), material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = 0.1 * scale }
+				local vs = 0.1 * scale
+				local attrT = H.attrTransform(attrs)
+				local local_ = attrT
+				local model = H.spawnModel
+				if model and model.pivot == "bottomcenter" and size then
+					-- the game puts a vox shape's pivot at the centre of its bottom face
+					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, 0, -size[3] * vs * 0.5)))
+				end
+				H.shapes[sh] = { handle = sh, body = cur, local_ = local_, material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = vs }
+				if model and (model.latency or 0) > 0 then
+					-- right after Spawn the engine reports an identity shape transform until the next tick
+					H.shapes[sh].realLocal = local_
+					H.shapes[sh].local_ = A.Transform()
+					H.shapes[sh].revealFrame = H.frame + model.latency
+					H.pendingShapes[#H.pendingShapes + 1] = sh
+				end
+				lastVox = { shape = sh, attrT = attrT, body = cur }
 				table.insert(H.bodies[cur].shapes, sh)
 				out[#out + 1] = sh
 				made[#made + 1] = sh
@@ -838,7 +881,11 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 		elseif tag == "light" then
 			out[#out + 1] = newHandle()
 		elseif tag == "joint" then
-			out[#out + 1] = newHandle()
+			local j = newHandle()
+			H.joints[j] = { handle = j, shapes = { lastVox and lastVox.shape or 0, 0 }, type = parseAttr(attrs, "type") or "ball", broken = false, tags = {},
+				body = lastVox and lastVox.body or 0, localT = lastVox and A.TransformToParentTransform(lastVox.attrT, H.attrTransform(attrs)) or A.Transform(),
+				angle = 0, spawnedWith = out }
+			out[#out + 1] = j
 		end
 	end
 	H.spawned[#H.spawned + 1] = { frame = H.frame, n = #out, xml = content:sub(1, 120) }
@@ -924,7 +971,11 @@ A.GetTime = function() return H.time end
 A.GetTimeStep = function() return H.dt end
 A.GetFps = function() return 1 / H.dt end
 H.env = { skyboxtint = { 1, 1, 1 }, fogColor = { 0.8, 0.8, 0.8 }, sunColorTint = { 1, 1, 1 }, exposure = { 1, 5 }, skyboxbrightness = { 1 } }
-A.SetEnvironmentProperty = function(name, a, b, c, d) H.env[name] = { a, b, c, d } end
+H.envLog = {}
+A.SetEnvironmentProperty = function(name, a, b, c, d)
+	H.env[name] = { a, b, c, d }
+	H.envLog[#H.envLog + 1] = { frame = H.frame, ctx = H.ctx, key = name, v = { a, b, c, d } }
+end
 A.GetEnvironmentProperty = function(name)
 	local v = H.env[name]
 	if not v then return 0, 0, 0, 0 end

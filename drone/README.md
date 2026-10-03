@@ -42,6 +42,11 @@ A deployable quadcopter flown from its own camera. Russian: [README.ru.md](READM
 | Mouse sensitivity | x1 | `savegame.mod.sens` |
 | Camera FOV 60-110° | 90 | `savegame.mod.fov` |
 | Freeze player while flying | yes | `savegame.mod.freeze` |
+| Debug line (for testing) | yes | `savegame.mod.debug` |
+
+## Fallback and debug line
+
+If the body does not follow the velocity the mod sets - input held but no progress for 0.5 s, or the drone sinks with nothing pressed - the drone switches to **kinematic flight**: it is made static and moved with `SetBodyTransform` every physics step, stopping at walls (raycast), so it flies even if the engine ignores script velocities. While piloting, a yellow line at the bottom left shows `drone: mode velocity|kinematic | client <keys> | server <keys> | sent <keys> | speed | camera | crashes`: the keys the client reads, the keys the server reads with the player id, and the keys that arrived by `ServerCall`. `tests/fallback_law.lua` proves it with a harness in which `SetBodyVelocity` has no effect: the drone does not sink, switches within about half a second, flies 10+ m in 2 s, climbs and hovers; `tests/flight_law.lua` checks that normal flight never switches.
 
 ## Install, build, test
 

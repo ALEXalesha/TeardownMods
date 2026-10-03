@@ -30,8 +30,9 @@ local WARN_TIME = 7
 local RECEDE_TIME = 9
 local ACT_RADIUS = 90        -- bodies are moved within this distance of a player
 local BODIES_PER_UPDATE = 60
-local PROBES_PER_UPDATE = 10
-local HOLES_PER_UPDATE = 8
+local PROBES_PER_UPDATE = 30
+local HOLES_PER_UPDATE = 24
+local HOLE_R2_BUDGET = 900      -- per step: sum of hole radius^2 (holes in shells cost ~ area)
 local SEG = 10               -- client: wall segment width
 local DRAW_HALF = 90         -- client: segments drawn within this lateral distance
 
@@ -45,10 +46,10 @@ local function tr(en, ru) if GetInt("options.language") == 7 then return ru end 
 
 function readSettings()
 	return {
-		height = clamp(getF("height", 9), 3, 20),
-		speed = clamp(getF("speed", 14), 8, 30),
+		height = clamp(getF("height", 14), 3, 25),
+		speed = clamp(getF("speed", 18), 8, 35),
 		flood = clamp(getF("flood", 1.5), 0, 4),
-		power = clamp(getF("power", 1), 0, 2),
+		power = clamp(getF("power", 1.5), 0, 3),
 		siren = getB("siren", true),
 	}
 end
@@ -62,7 +63,7 @@ function waterAt(w, x)
 		return w.flood * k, -0.35 * w.speed * k
 	end
 	if x < 0 then return 0, 0 end
-	if x < CREST then return w.h * math.sqrt(1 - x / CREST * 0.65), w.speed * (w.phase == "wave" and 1 or 0) end
+	if x < CREST then return w.h * math.sqrt(1 - x / CREST * 0.65), w.speed * 1.15 * (w.phase == "wave" and 1 or 0) end
 	if x < CREST + SURGE then
 		local f = (x - CREST) / SURGE
 		return lerp(0.35 * w.h, w.flood, f), w.speed * lerp(0.8, 0.25, f) * (w.phase == "wave" and 1 or 0)
@@ -261,12 +262,12 @@ function server.current(w, dt)
 						local mass = GetBodyMass(b)
 						local sub = clamp(depth / math.max(0.5, bmax[2] - bmin[2]), 0, 1)
 						local v = GetBodyVelocity(b)
-						local kf = 1 - math.exp(-(1.2 + 2.5 * sub) * since)
-						local massK = clamp(6000 / math.max(mass, 1), 0.35, 1)
+						local kf = 1 - math.exp(-(2.5 + 4.0 * sub) * since)
+						local massK = clamp(20000 / math.max(mass, 1), 0.6, 1)
 						local dvx = (u * dir[1] - v[1]) * kf * massK
 						local dvz = (u * dir[3] - v[3]) * kf * massK
 						local dvy = 10 * since * sub * 0.95
-						if w.phase == "wave" and w.s - a < CREST then dvy = dvy + 4 * kf * sub end
+						if w.phase == "wave" and w.s - a < CREST then dvy = dvy + 7 * kf * sub end
 						ApplyBodyImpulse(b, com, VecScale(Vec(dvx, dvy, dvz), mass))
 					end
 				end
@@ -281,29 +282,31 @@ end
 function server.tear(w)
 	if w.power <= 0 then return end
 	local holes = 0
-	local hk = clamp(w.h / 8, 0.5, 1.5)
-	local r0 = (1.0 + 0.9 * w.power) * hk
-	local r1 = math.min(r0, 0.35 * w.power * hk)
+	local hk = clamp(w.h / 8, 0.6, 2)
+	local r0 = (1.6 + 1.2 * w.power) * hk                     -- wood, glass, plaster
+	local r1 = math.min(r0, (0.6 + 0.7 * w.power) * hk)       -- brick, concrete: real breaches now
+	local budget = HOLE_R2_BUDGET
 	local players = {}
 	for p in Players() do players[#players + 1] = p end
 	if #players == 0 then return end
 	for i = 1, PROBES_PER_UPDATE do
-		if holes >= HOLES_PER_UPDATE then break end
+		if holes >= HOLES_PER_UPDATE or budget <= 0 then break end
 		local p = players[(i % #players) + 1]
 		local _, lp = frame(w, GetPlayerTransform(p).pos)
 		local l = clamp(lp + rnd(-ACT_RADIUS, ACT_RADIUS), -HALF_WIDTH, HALF_WIDTH)
-		local a = w.s - rnd(0, 3)
+		local a = w.s - rnd(0, 6)
 		local base = Vec(w.ox + a * w.dx - l * w.dz, w.oy + 40, w.oz + a * w.dz + l * w.dx)
 		QueryRequire("physical static")
 		local hit, dist = QueryRaycast(base, Vec(0, -1, 0), 120)
 		if hit and base[2] - dist < w.oy + w.h - 0.5 then
 			local gy = math.max(base[2] - dist, w.oy)
-			local sample = Vec(base[1], rnd(gy + 0.3, math.max(gy + 0.6, w.oy + w.h * 0.8)), base[3])
+			local sample = Vec(base[1], rnd(gy + 0.3, math.max(gy + 0.6, w.oy + w.h)), base[3])
 			QueryRequire("physical")
 			local ok, point, nrm = QueryClosestPoint(sample, 2.5)
 			if ok and not (nrm[2] > 0.7 and point[2] < gy + 0.5) then
 				MakeHole(point, r0, r1, 0, true)
 				holes = holes + 1
+				budget = budget - r0 * r0
 			end
 		end
 	end

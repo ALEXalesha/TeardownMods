@@ -1,12 +1,12 @@
 [h1]Tsunami[/h1]
-A conch horn that calls a tsunami from where you look. A siren warns while the wave rises on the horizon, then a wall of water rolls in, carries away objects, vehicles and you, tears weak buildings, floods the ground and finally runs back.
+A conch horn that calls a tsunami from where you look. A siren warns while the wave rises on the horizon, then a wall of water rolls in, throws cars, carries away objects and you, tears buildings apart, floods the ground and finally runs back.
 
 [h2]Features[/h2]
 [list]
 [*]Warning siren with distance and height of the wave
-[*]A 400 m wide wall of water with a foam crest and spray
-[*]Carries objects, vehicles and players with the current
-[*]Tears wood, glass and plaster; concrete only a little
+[*]A 400 m wide, 14 m high wall of water with a foam crest and spray
+[*]A current strong enough to throw cars; carries objects, debris and players
+[*]Tears wood and brick buildings apart over the whole wave height
 [*]Flood behind the wave, then backwash
 [*]Any water in the level turns rough during the event and calms down afterwards
 [/list]
@@ -17,10 +17,10 @@ A conch horn that calls a tsunami from where you look. A siren warns while the w
 [/list]
 [h2]Settings (Mod Manager - the mod - Options)[/h2]
 [list]
-[*]Wave height 3-20 m: [i]9 m[/i]
-[*]Wave speed 8-30 m/s: [i]14 m/s[/i]
+[*]Wave height 3-25 m: [i]14 m[/i]
+[*]Wave speed 8-35 m/s: [i]18 m/s[/i]
 [*]Flood level behind it 0-4 m: [i]1.5 m[/i]
-[*]Damage to weak structures x0-x2: [i]x1[/i]
+[*]Damage to buildings x0-x3: [i]x1.5[/i]
 [*]Warning siren: [i]on[/i]
 [/list]
 [h2]Known limits[/h2]

@@ -21,6 +21,7 @@ local ROWS = {
 	{ kind = "slider", key = "crash", label = { "Breaks at impact of", "Ломается при ударе" }, default = 9.0, min = 4, max = 20, fmt = { "%.0f m/s", "%.0f м/с" }, int = false, step = 1 },
 	{ kind = "slider", key = "sens", label = { "Mouse sensitivity", "Чувствительность мыши" }, default = 1.0, min = 0.2, max = 3, fmt = { "x%.1f", "x%.1f" }, int = false, step = 0.1 },
 	{ kind = "slider", key = "fov", label = { "Camera FOV", "Угол обзора камеры" }, default = 90.0, min = 60, max = 110, fmt = { "%.0f°", "%.0f°" }, int = false, step = 5 },
+	{ kind = "choice", key = "debug", label = { "Debug line (for testing)", "Строка отладки (для проверки)" }, default = true, choices = { { true, "Yes", "Да" }, { false, "No", "Нет" } } },
 	{ kind = "choice", key = "freeze", label = { "Freeze player while flying", "Тело игрока стоит" }, default = true, choices = { { true, "Yes", "Да" }, { false, "No", "Нет" } } },
 }
 

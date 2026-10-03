@@ -186,6 +186,7 @@ function T.step(dt)
 	H.frame = H.frame + 1
 	H.time = H.time + dt
 	H.frameCalls = {}
+	if H.revealShapes then H.revealShapes() end
 	H.frameParticles = 0
 	H.uiTexts = {}
 	H.camera = nil

@@ -35,11 +35,13 @@ A deployable quadcopter flown from its own camera while your body stays behind. 
 [*]Mouse sensitivity: [i]x1[/i]
 [*]Camera FOV 60-110°: [i]90[/i]
 [*]Hold the pilot's body in place: [i]yes[/i]
+[*]Debug line (for testing): [i]on[/i]
 [/list]
 [h2]Known limits[/h2]
 [list]
 [*]Photo mode only hides the HUD: take the picture with Steam's screenshot key (F12)
 [*]Your body stays where you left it and can be hurt
+[*]If the game does not move the drone physically, it switches to a fallback flight mode; in that mode it stops at walls instead of bouncing off them
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

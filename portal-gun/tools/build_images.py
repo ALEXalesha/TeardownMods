@@ -100,8 +100,8 @@ def build_preview():
     img.alpha_composite(gun, (W - gun.width - 30, H - gun.height - 20))
     img = art.text_with_glow(img, (44, 100), "PORTAL GUN", art.font(76), glow=(80, 150, 255), anchor="ls")
     img = art.text_with_glow(img, (48, 146), "Портальная пушка", art.font(34, bold=False), fill=(255, 240, 220), glow=(255, 130, 30), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

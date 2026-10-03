@@ -122,8 +122,8 @@ def build_preview():
     img.alpha_composite(conch, (W - conch.width - 50, H - conch.height - 30))
     img = art.text_with_glow(img, (W - 40, 96), "TSUNAMI", art.font(78), glow=(30, 140, 220), anchor="rs")
     img = art.text_with_glow(img, (W - 44, 142), "Цунами", art.font(36, bold=False), fill=(220, 240, 255), glow=(20, 90, 160), glow_r=6, anchor="rs")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

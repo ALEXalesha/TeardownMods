@@ -1,0 +1,34 @@
+[h1]Portal Gun[/h1]
+Place a blue and an orange portal on flat surfaces and walk, fall or throw things through them. Momentum and direction are kept, so floor-to-wall flings work.
+
+[h2]Features[/h2]
+[list]
+[*]Player and objects pass through with their speed
+[*]Floor, wall and ceiling portals
+[*]No ping-pong: a short cooldown and you must step away first
+[*]A portal closes when its surface is destroyed
+[*]Animated swirl, glowing rim, sparks, hum and sounds
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - blue portal
+[*][b]RMB[/b] - orange portal
+[*][b]R[/b] - close both
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Range 20-200 m: [i]100 m[/i]
+[*]Portal size small / normal / large: [i]normal[/i]
+[*]Objects pass through: [i]yes[/i]
+[*]Heaviest object 50-3000 kg: [i]500 kg[/i]
+[*]Portals on moving objects: [i]no[/i]
+[*]Portal hum volume: [i]0.5[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]You cannot see through a portal: Teardown has no render-to-texture
+[*]Vehicles are not teleported
+[*]Objects bigger than the portal simply hit the wall
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

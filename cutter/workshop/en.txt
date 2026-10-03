@@ -1,0 +1,36 @@
+[h1]Cutter[/h1]
+An angle grinder. Hold the mouse button on a surface, sweep to the end point and release: the saw cuts a straight kerf from one point to the other, through walls, floors and vehicles.
+
+[h2]Features[/h2]
+[list]
+[*]Dashed preview line while you hold
+[*]Cuts through to the other side, up to the max depth
+[*]Wood, glass, plaster, plastic; metal and concrete too (concrete slower); hard metal optional
+[*]Sparks on metal and concrete, sawdust on wood, dust on concrete
+[*]Motor whine, spin-up and spin-down, grinding pitch that depends on the material
+[*]Up to 4 queued cuts
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]Hold LMB, sweep, release[/b] - cut a straight line from the press point to the release point
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Kerf width 0.1-0.4 m: [i]0.2 m[/i]
+[*]Max depth 0.2-3 m: [i]1 m[/i]
+[*]Max cut length 0.5-10 m: [i]4 m[/i]
+[*]Reach 2-15 m: [i]6 m[/i]
+[*]Speed (holes per step) 4-40: [i]12[/i]
+[*]Cuts metal: [i]yes[/i]
+[*]Cuts concrete and brick: [i]yes[/i]
+[*]Concrete is slower by x1-x6: [i]x3[/i]
+[*]Cuts hard metal: [i]no[/i]
+[*]Sparks and dust: [i]yes[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Hard metal and hard masonry are off by default
+[*]Cutting speed is limited by a per-step budget
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

@@ -50,8 +50,8 @@ def build_preview():
     img.alpha_composite(tx, (60, H - tx.height - 30))
     img = art.text_with_glow(img, (44, 96), "VEHICLE REMOTE", art.font(68), glow=(255, 70, 50), anchor="ls")
     img = art.text_with_glow(img, (48, 140), "Радиоуправление", art.font(34, bold=False), fill=(255, 235, 230), glow=(200, 50, 40), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

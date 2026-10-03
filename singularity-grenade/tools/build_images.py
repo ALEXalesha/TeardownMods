@@ -115,9 +115,9 @@ def build_preview() -> None:
     f2 = art.font(32, bold=False)
     img = art.text_with_glow(img, (44, 96), "SINGULARITY GRENADE", f1, anchor="ls")
     img = art.text_with_glow(img, (48, 142), "Гравитационная граната", f2, fill=(230, 210, 255), glow=(120, 60, 220), glow_r=6, anchor="ls")
-    out = os.path.join(MOD, "preview.jpg")
+    out = os.path.join(MOD, "thumb.jpg")
     n = art.save_jpg(img, out)
-    print(f"preview.jpg {W}x{H} {n // 1024} KB")
+    print(f"thumb.jpg {W}x{H} {n // 1024} KB")
 
 
 def build_icon() -> None:

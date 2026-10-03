@@ -1,0 +1,36 @@
+[h1]Singularity Grenade[/h1]
+A throwable gravity grenade. It bounces, rises and opens into a short-lived singularity that pulls in debris, objects and players, squeezes them into a spinning orbit and then collapses in a blast.
+
+[h2]Features[/h2]
+[list]
+[*]The pull falls off with distance; heavy objects resist
+[*]Objects that reach the core spin on a tight orbit
+[*]Tears weak materials around it: glass, wood, plastic, plaster, foliage
+[*]Implosion: white flash, outward blast that throws everything it gathered, scorch mark
+[*]Up to 4 grenades at once
+[*]The Camera Drone mod drops these grenades when both mods are on
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]Hold LMB, release[/b] - throw (hold up to 1 s to throw farther)
+[*][b]RMB[/b] - short toss at your feet
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Radius 3-20 m: [i]8 m[/i]
+[*]Strength x0.2-x3: [i]x1[/i]
+[*]Duration 1-15 s: [i]4 s[/i]
+[*]Grenades 1-50 (unlimited in sandbox): [i]5[/i]
+[*]Opens after stopping / on impact: [i]after stopping[/i]
+[*]Pulls the player: [i]yes[/i]
+[*]Damage to players off / low / high: [i]low[/i]
+[*]Tears weak materials: [i]yes[/i]
+[*]Real explosion at the end: [i]no[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Metal, concrete, brick and rock are not torn
+[*]The number of grenades applies when the level starts
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

@@ -1,0 +1,35 @@
+[h1]Vehicle Remote[/h1]
+Point at any vehicle and drive it remotely, like an RC car, while you stay where you are. A chase camera, a signal range with static, and hopping from car to car.
+
+[h2]Features[/h2]
+[list]
+[*]Real driving through the game's vehicle controls
+[*]Chase camera behind the car, mouse orbits it, kept out of walls
+[*]Signal range: static near the edge; past it the car brakes and is released
+[*]Outlines for the controlled and aimed car; HUD with speed, damage and signal
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB on a vehicle[/b] - take control; on another one while driving: hop to it
+[*][b]W / S[/b] - throttle / reverse
+[*][b]A / D[/b] - steer
+[*][b]Space[/b] - handbrake
+[*][b]V[/b] - chase camera on / off
+[*][b]Q[/b] - let go
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Signal range 30-500 m: [i]150 m[/i]
+[*]Pick-up distance 10-200 m: [i]80 m[/i]
+[*]Chase camera on at start: [i]yes[/i]
+[*]Camera distance 3-20 m: [i]7 m[/i]
+[*]Freeze player while driving: [i]yes[/i]
+[*]Mouse sensitivity: [i]x1[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]A car that another player drives cannot be taken
+[*]Past the signal range the car brakes and is released after 3 s
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

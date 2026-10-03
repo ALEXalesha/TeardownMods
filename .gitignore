@@ -7,3 +7,4 @@ __pycache__/
 reports/
 .DS_Store
 Thumbs.db
+_shared/tdlib/personal_tokens.txt

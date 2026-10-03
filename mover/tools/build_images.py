@@ -101,8 +101,8 @@ def build_preview():
     f2 = art.font(34, bold=False)
     img = art.text_with_glow(img, (44, 100), "MOVER", f1, glow=(40, 200, 255), anchor="ls")
     img = art.text_with_glow(img, (48, 146), "Перемещатель", f2, fill=(210, 250, 255), glow=(30, 150, 200), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 def build_icon():

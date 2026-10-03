@@ -25,6 +25,10 @@ and its own README in English and Russian. Russian version of this page: [README
 <!-- /mods -->
 
 
+## Steam Workshop
+
+Every mod is ready for the Workshop (square Steam preview, 16:9 in-game preview, tags, EN/RU descriptions in `<mod>/workshop/`, an upload check). Step-by-step guide and upload order: [WORKSHOP.md](WORKSHOP.md).
+
 ## Shared tooling
 
 [`_shared`](_shared) holds the generators and the offline test harness used by every mod:

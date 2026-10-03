@@ -1,0 +1,34 @@
+[h1]Earthquake[/h1]
+A seismic detonator. Start an earthquake at the aim point, from Weak to Catastrophic: things rock and tip over, buildings crack and fall, joints snap, aftershocks follow.
+
+[h2]Features[/h2]
+[list]
+[*]Five presets: Weak, Moderate, Strong, Severe, Catastrophic
+[*]Objects and vehicles rock, slide and tip over; heavy things move less
+[*]The player is jolted, the camera shakes, rumble and cracking sounds
+[*]Dust rises, grit falls from ceilings
+[*]Damage grows with the preset: glass and wood first, then concrete and brick, at the top even hard metal
+[*]Hinges, ropes and joints break; optional aftershocks; seismograph HUD
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - start a quake at the aim point / stop it
+[*][b]RMB[/b] - next preset
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Duration 5-60 s: [i]15 s[/i]
+[*]Starting preset: [i]Strong[/i]
+[*]Radius 20-150 m: [i]60 m[/i]
+[*]Aftershocks: [i]yes[/i]
+[*]Structural damage: [i]yes[/i]
+[*]Camera shake x0-x2: [i]x1[/i]
+[*]Epicentre: aim point / under the player: [i]aim point[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Damage is spread over time within a budget (at most 450 holes per quake); buildings then fall through the game's own structural physics
+[*]The terrain itself does not move
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

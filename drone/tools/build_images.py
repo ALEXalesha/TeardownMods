@@ -101,8 +101,8 @@ def build_preview():
     img.alpha_composite(dr, (40, H - dr.height - 30))
     img = art.text_with_glow(img, (44, 100), "CAMERA DRONE", art.font(70), glow=(60, 220, 120), anchor="ls")
     img = art.text_with_glow(img, (48, 142), "Дрон с камерой", art.font(32, bold=False), fill=(220, 255, 225), glow=(40, 160, 80), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 def rotor_png(path, size=128):

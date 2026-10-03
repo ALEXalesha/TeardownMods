@@ -13,7 +13,7 @@ A deployable quadcopter flown from its own camera. Russian: [README.ru.md](READM
 | R | pack the drone up (within 4 m), bombs and battery refill | |
 
 - Own voxel model with four rotors (rotor collision is off); their spin is a translucent blur disc drawn by the client, because moving shapes of a free-flying body every tick fights the physics solver (the game itself never does it). Blinking LEDs (server side, the body is server-authored), a light under the body, a hum loop whose volume and pitch follow the thrust.
-- Flight: velocity tracking with `ApplyBodyImpulse` plus gravity compensation, upright and tilted into motion with `ConstrainOrientation`. With no input it holds position.
+- Flight: the server sets the body velocity every physics step (first-order follow of the sticks, gravity of that step cancelled) and turns the body with its angular velocity, upright and tilted into motion. With no input it holds position and altitude.
 - Battery (3 min by default, more drain at high thrust): when empty the motors stop and the drone falls.
 - Signal range (150 m by default): from 75% of the range the picture gets static (noise and scan lines, static sound); past the range the link is lost, input is ignored and the drone slowly descends.
 - Crash: a velocity change above 9 m/s in one physics step (the mod subtracts its own push) breaks the drone into debris; control returns to the player.

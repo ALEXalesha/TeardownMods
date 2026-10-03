@@ -76,8 +76,8 @@ def build_preview():
     img.alpha_composite(hg, (W - hg.width - 50, H - hg.height - 40))
     img = art.text_with_glow(img, (44, 100), "TIME SLOW", art.font(80), glow=(60, 140, 255), anchor="ls")
     img = art.text_with_glow(img, (48, 146), "Замедление времени", art.font(34, bold=False), fill=(220, 235, 255), glow=(40, 100, 220), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 def build_icon():

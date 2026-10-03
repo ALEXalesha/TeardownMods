@@ -1,0 +1,36 @@
+[h1]Gravity Change[/h1]
+Switch the real gravity of the whole level with one key: Earth, Moon, Mars, zero-G, reverse and sideways, with a smooth transition. Works with anything in hand.
+
+[h2]Features[/h2]
+[list]
+[*]Six presets: Earth, Moon (1.62 m/s²), Mars (3.71), zero-G, reverse, sideways
+[*]Smooth transition; resting objects nearby are woken so they react
+[*]Zero-G thrusters: float up and down
+[*]Indicator with an arrow pointing to where down is
+[*]Floating dust, a soft hum in zero-G, a sweep sound on each change
+[*]Optional automatic return to Earth
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]G (tap)[/b] - next preset
+[*][b]G (hold 0.8 s)[/b] - back to Earth
+[*][b]Space / Ctrl in zero-G[/b] - float up / down
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Key G / J / K: [i]G[/i]
+[*]Transition 0-5 s: [i]1.5 s[/i]
+[*]Reverse strength: [i]4 m/s²[/i]
+[*]Sideways strength: [i]6 m/s²[/i]
+[*]Back to Earth after never / 10 / 30 / 60 s: [i]never[/i]
+[*]Wake objects within: [i]60 m[/i]
+[*]Zero-G thrusters: [i]on[/i]
+[*]Indicator: [i]show[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Gravity goes back to normal when the level restarts
+[*]Objects farther than the wake radius keep sleeping until something touches them
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

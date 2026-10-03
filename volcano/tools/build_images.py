@@ -71,8 +71,8 @@ def build_preview():
     img.alpha_composite(core, (60, H - core.height - 40))
     img = art.text_with_glow(img, (44, 96), "VOLCANO", art.font(78), glow=(255, 90, 30), anchor="ls")
     img = art.text_with_glow(img, (48, 142), "Вулкан", art.font(36, bold=False), fill=(255, 225, 200), glow=(200, 60, 20), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

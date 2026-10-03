@@ -80,8 +80,8 @@ def build_preview():
     img.alpha_composite(dev, (W - dev.width - 40, H - dev.height - 30))
     img = art.text_with_glow(img, (44, 110), "TORNADO", art.font(84), glow=(140, 170, 200), anchor="ls")
     img = art.text_with_glow(img, (48, 156), "Торнадо", art.font(36, bold=False), fill=(230, 240, 250), glow=(100, 130, 170), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

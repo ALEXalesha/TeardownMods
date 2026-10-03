@@ -1,0 +1,36 @@
+[h1]Falling Moon[/h1]
+A telescope that calls the moon down on the aim point. Over 1-5 minutes it grows in the sky, the ground trembles, the sky turns red and a countdown runs; for the last seconds it is a real voxel moon that comes down and takes almost everything around with it.
+
+[h2]Features[/h2]
+[list]
+[*]A real 3D moon: shaded and hidden behind trees while far away, a real voxel sphere for the last seconds
+[*]Tremors, wind and lifting debris build up; red sky; countdown with beeps and a roar
+[*]Impact: blinding flash, a crater around the embedded moon
+[*]Shockwave that takes down almost everything in the radius, hard materials near the centre too
+[*]Explosions, fires, objects thrown hard, dust; the sky recovers slowly
+[*]Send it back with RMB while it is still far away
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - call the moon down on the aim point
+[*][b]RMB[/b] - send it back (while it is still far away)
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Time until impact 60-300 s: [i]120 s[/i]
+[*]Shockwave radius 50-300 m: [i]150 m[/i]
+[*]Destruction strong / heavy / total: [i]total[/i]
+[*]Moon size 30 / 45 / 60 m: [i]45 m[/i]
+[*]Damage to players off / normal / deadly: [i]normal[/i]
+[*]Fires: [i]on[/i]
+[*]Red sky 0-1: [i]0.8[/i]
+[*]Tremors and wind: [i]on[/i]
+[*]Countdown: [i]show[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Very heavy on big maps: if the game stutters, pick a lower destruction level or a smaller moon
+[*]The moon stays in its crater afterwards
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

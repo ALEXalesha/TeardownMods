@@ -1,0 +1,42 @@
+[h1]Mover[/h1]
+A gizmo gun that moves things: grab any loose object or vehicle, push and pull it, rotate it on three axes, freeze it in mid-air, clone it, resample it and undo your moves.
+
+[h2]Features[/h2]
+[list]
+[*]Carried objects still collide with the world
+[*]Vehicles are moved as a whole
+[*]Optional position and rotation snapping
+[*]Undo for the last 12 moves, freezes and clones
+[*]Outlines for aimed, held and frozen objects; a controls panel
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]Hold LMB[/b] - grab the aimed object; release drops it
+[*][b]Mouse wheel[/b] - push / pull
+[*][b]Q / R[/b] - rotate
+[*][b]Z / X[/b] - tilt
+[*][b]V / B[/b] - roll
+[*][b]T[/b] - freeze / unfreeze
+[*][b]G[/b] - clone
+[*][b]N / M[/b] - resample x0.5 / x2 (experimental)
+[*][b]U[/b] - undo
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Max distance 5-100 m: [i]40 m[/i]
+[*]Move speed: [i]20[/i]
+[*]Position snap: [i]off[/i]
+[*]Rotation snap: [i]off[/i]
+[*]Rotation speed: [i]90 °/s[/i]
+[*]Cloning: [i]on[/i]
+[*]Scaling: [i]on[/i]
+[*]Controls panel: [i]show[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Static level geometry (buildings, terrain) cannot be grabbed
+[*]Clones do not copy joints, lights or scripts; vehicles cannot be cloned
+[*]Scaling resamples voxels (small objects, up to 128 voxels per side) and cannot be undone
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

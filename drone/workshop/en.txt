@@ -1,0 +1,45 @@
+[h1]Camera Drone[/h1]
+A deployable quadcopter flown from its own camera while your body stays behind. Battery, signal range with static, a target marker and bombs - or Singularity Grenades if that mod is on.
+
+[h2]Features[/h2]
+[list]
+[*]Holds its position and altitude with no input; steady at any frame rate
+[*]Battery: when it runs out the motors stop and the drone falls
+[*]Signal range: static near the edge, lost link beyond it
+[*]Hitting something too fast breaks it into debris
+[*]Target marker: where a bomb released now would land
+[*]Photo mode hides the HUD
+[*]Own voxel model, rotor blur, blinking LEDs, hum
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB (on foot)[/b] - launch the drone / take control again
+[*][b]R (on foot, within 4 m)[/b] - pack it up (refills bombs and battery)
+[*][b]WASD[/b] - fly
+[*][b]Space / Ctrl[/b] - up / down
+[*][b]Mouse[/b] - look and turn
+[*][b]LMB (flying)[/b] - drop a bomb
+[*][b]Q[/b] - back to your body (the drone keeps hovering)
+[*][b]P[/b] - photo mode
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Max speed 5-25 m/s: [i]12[/i]
+[*]Signal range 50-500 m: [i]150 m[/i]
+[*]Battery limited / unlimited: [i]limited[/i]
+[*]Battery lasts 1-10 min: [i]3 min[/i]
+[*]Bombs per flight 1-10: [i]3[/i]
+[*]Drop Singularity Grenade if that mod is on: [i]yes[/i]
+[*]Own bomb size 0.5-2: [i]1.0[/i]
+[*]Breaks at impact of 4-20 m/s: [i]9[/i]
+[*]Mouse sensitivity: [i]x1[/i]
+[*]Camera FOV 60-110°: [i]90[/i]
+[*]Hold the pilot's body in place: [i]yes[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Photo mode only hides the HUD: take the picture with Steam's screenshot key (F12)
+[*]Your body stays where you left it and can be hurt
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

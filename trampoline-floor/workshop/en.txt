@@ -1,0 +1,35 @@
+[h1]Trampoline Floor[/h1]
+Place bounce pads, or make the whole ground bouncy. Players, objects and vehicles bounce back at least as high as they fell, a little higher each time, and jumping on contact sends you even higher.
+
+[h2]Features[/h2]
+[list]
+[*]Up to 8 pads, 3 x 3 m
+[*]Global mode: the whole ground around you bounces
+[*]Restitution 1.05 by default, capped by a max speed
+[*]Jump on contact for extra height
+[*]Works for players, loose objects and vehicles
+[*]Boing sound, a dust ring, a dipping membrane
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - place a pad on flat ground
+[*][b]RMB[/b] - remove the nearest pad
+[*][b]R[/b] - whole ground bounces on / off
+[*][b]Space on contact[/b] - bounce higher
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Bounciness 0.3-1.5: [i]1.05[/i]
+[*]Max bounce speed 5-60 m/s: [i]30[/i]
+[*]Jump boost on contact 0-15 m/s: [i]+6[/i]
+[*]Players / objects / vehicles bounce: [i]yes[/i]
+[*]Global mode radius 10-80 m: [i]30 m[/i]
+[*]Whole ground bounces at start: [i]no[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Teardown has no per-surface bounciness, so the mod gives the falling speed back upwards
+[*]Pads go on flat ground only
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

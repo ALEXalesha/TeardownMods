@@ -60,7 +60,8 @@ mod/                 the mod as Teardown loads it
   vox/grenade.vox    generated model: core + two gimbal rings (3 shapes)
   snd/*.ogg          generated sounds (mono Vorbis 44.1 kHz)
   ui/                icon, vignette, slider dot
-  preview.jpg        generated preview (1024x576)
+  thumb.jpg          generated in-game preview (1024x576, 16:9)
+  preview.jpg        Steam Workshop preview (1024x1024, square, made by _shared/tdlib/workshop.py)
 tools/               generators: build_vox.py, build_sounds.py, build_images.py, build_all.py
 tests/scenarios.lua  offline harness scenarios
 ```

@@ -115,8 +115,8 @@ def build_preview():
     img.alpha_composite(tel, (40, H - tel.height - 20))
     img = art.text_with_glow(img, (44, 96), "FALLING MOON", art.font(72), glow=(255, 90, 40), anchor="ls")
     img = art.text_with_glow(img, (48, 142), "Падающая луна", art.font(34, bold=False), fill=(255, 230, 210), glow=(200, 60, 20), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

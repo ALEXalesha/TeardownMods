@@ -1,0 +1,37 @@
+[h1]Time Slow[/h1]
+Hold a key to slow the whole world down to x0.5, x0.25 or x0.1, with a smooth ramp, a blue tint, muffled music, a heartbeat and an energy meter. Works with any tool in hand.
+
+[h2]Features[/h2]
+[list]
+[*]Smooth ramp in and out
+[*]Blue tint and desaturation, restored exactly afterwards
+[*]Muffled music, heartbeat, whooshes, a blue vignette
+[*]Energy meter that drains and refills (can be turned off)
+[*]HUD: hourglass, speed, energy
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]H (hold, or toggle)[/b] - slow motion
+[*][b]J[/b] - speed x0.5 / x0.25 / x0.1
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Key: H / Y / T / middle mouse: [i]H[/i]
+[*]Mode: hold / toggle: [i]hold[/i]
+[*]Starting speed: [i]x0.25[/i]
+[*]Ramp time 0.05-1.5 s: [i]0.35 s[/i]
+[*]Energy meter: [i]on[/i]
+[*]Energy lasts 2-60 s: [i]8 s[/i]
+[*]Full recharge 2-60 s: [i]12 s[/i]
+[*]Blue tint 0-1: [i]0.8[/i]
+[*]Faster walking in slow motion: [i]off[/i]
+[*]Hint at level start: [i]show[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]The player is slowed too: the game has no per-object time scale
+[*]In multiplayer the time scale is global
+[*]World sounds are pitched down by the engine; only the music gets the low-pass
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

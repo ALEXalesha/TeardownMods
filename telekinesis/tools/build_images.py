@@ -69,8 +69,8 @@ def build_preview():
     img.alpha_composite(gl, (gx, gy))
     img = art.text_with_glow(img, (W - 40, 100), "TELEKINESIS", art.font(74), glow=(160, 90, 255), anchor="rs")
     img = art.text_with_glow(img, (W - 44, 146), "Телекинез", art.font(36, bold=False), fill=(235, 220, 255), glow=(120, 60, 220), glow_r=6, anchor="rs")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

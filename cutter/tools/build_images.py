@@ -61,8 +61,8 @@ def build_preview():
     img.alpha_composite(saw, (x1 - 40, y1 - saw.height // 2 + 10))
     img = art.text_with_glow(img, (44, H - 80), "CUTTER", art.font(84), glow=(255, 120, 30), anchor="ls")
     img = art.text_with_glow(img, (48, H - 34), "Резак", art.font(36, bold=False), fill=(255, 230, 200), glow=(200, 90, 20), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 def build_icon():

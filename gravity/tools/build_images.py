@@ -60,8 +60,8 @@ def build_preview():
     img.alpha_composite(core, (W - core.width - 60, H - core.height - 20))
     img = art.text_with_glow(img, (44, 96), "GRAVITY CHANGE", art.font(66), glow=(80, 180, 255), anchor="ls")
     img = art.text_with_glow(img, (48, 140), "Смена гравитации", art.font(34, bold=False), fill=(220, 240, 255), glow=(50, 120, 220), glow_r=6, anchor="ls")
-    n = art.save_jpg(img, os.path.join(MOD, "preview.jpg"))
-    print("preview.jpg", n // 1024, "KB")
+    n = art.save_jpg(img, os.path.join(MOD, "thumb.jpg"))
+    print("thumb.jpg (16:9, in-game preview)", n // 1024, "KB")
 
 
 if __name__ == "__main__":

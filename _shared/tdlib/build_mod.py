@@ -3,7 +3,8 @@
     python build_mod.py <mod_root>
 
 Runs tools/build_vox.py, tools/build_sounds.py, tools/build_images.py (those
-that exist), then check_mod.py on mod/ and the harness on every tests/*.lua.
+that exist), workshop.py (Workshop texts, square preview, upload check), then
+check_mod.py on mod/ and the harness on every tests/*.lua.
 """
 from __future__ import annotations
 
@@ -22,6 +23,8 @@ def main(root: str) -> int:
         p = os.path.join(root, "tools", name)
         if os.path.isfile(p):
             steps.append([sys.executable, p])
+    # Workshop texts, square Steam preview and the upload check (personal data, dev files, previews, tags)
+    steps.append([sys.executable, os.path.join(HERE, "workshop.py"), root])
     steps.append([sys.executable, os.path.join(HERE, "check_mod.py"), os.path.join(root, "mod")])
     for sc in sorted(glob.glob(os.path.join(root, "tests", "*.lua"))):
         steps.append([sys.executable, os.path.join(HERE, "..", "harness", "run.py"), os.path.join(root, "mod"), sc, "--quiet"])

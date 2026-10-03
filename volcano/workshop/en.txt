@@ -1,0 +1,33 @@
+[h1]Volcano[/h1]
+A magma core tool. Raise a volcano on the ground in a few seconds and watch it erupt in phases: rumble and smoke, lava bombs that punch craters and start fires, lava flows, ash, and a final blast that blows the summit off.
+
+[h2]Features[/h2]
+[list]
+[*]The cone grows out of the ground layer by layer
+[*]Smoke column, tremors, glowing lava streams and crater
+[*]Lava bombs thrown in arcs: craters, fires, glowing trails
+[*]Lava flows roll down the slopes
+[*]Ash falls, the ground shakes, crater light, roar
+[*]Final blast takes the summit off; the dead cone stays
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB on the ground[/b] - raise a volcano
+[*][b]RMB during the eruption[/b] - final blast now
+[*][b]R[/b] - remove the cones
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Size small 22 m / medium 29 m / large 44 m: [i]medium[/i]
+[*]Eruption strength x0.5-x2: [i]x1[/i]
+[*]Eruption length 20-120 s: [i]45 s[/i]
+[*]Fires: [i]on[/i]
+[*]Ash fall: [i]on[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]One volcano erupts at a time; up to 4 dead cones are kept
+[*]The cone is placed on the aim point and may cut into uneven ground
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

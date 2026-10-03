@@ -1,0 +1,35 @@
+[h1]Tornado[/h1]
+A storm caller. Spawn a tornado at the aim point: it forms in place, then wanders the map or follows your aim, sucking in, spinning, lifting and throwing objects, vehicles and you, and tearing weak buildings.
+
+[h2]Features[/h2]
+[list]
+[*]Up to 2 tornadoes at once
+[*]Bending, swaying funnel of smoke, a dust ring, flying debris
+[*]Pulls in, spins, lifts and flings; heavy things resist
+[*]Vehicles and the player can be lifted; walls shield you
+[*]Tears glass, wood and plaster; concrete and metal at higher strength
+[*]Wind roar that grows as it comes, thunder, camera shake
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB[/b] - spawn a tornado at the aim point
+[*][b]RMB[/b] - dismiss the nearest one
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Strength x0.3-x3: [i]x1[/i]
+[*]Size (top radius) 4-20 m: [i]8 m[/i]
+[*]Lifetime 10-180 s: [i]40 s[/i]
+[*]Travel speed 1-12 m/s: [i]4[/i]
+[*]Movement: wanders / follows your aim: [i]wanders[/i]
+[*]Lifts vehicles: [i]yes[/i]
+[*]Lifts the player: [i]yes[/i]
+[*]Tears buildings: [i]yes[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Concrete and metal are torn only at strength 2 and above
+[*]At most 600 holes per tornado
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

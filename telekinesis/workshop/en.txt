@@ -1,0 +1,34 @@
+[h1]Telekinesis[/h1]
+A telekinesis gauntlet. Lift the loose objects around your aim point into a spinning ring in front of you, charge, and throw them as a volley - or put them down gently.
+
+[h2]Features[/h2]
+[list]
+[*]Up to 8 objects at once, each up to 200 kg
+[*]They hover on a spinning ring that tightens while you charge
+[*]Volley throw at 14-54 m/s depending on the charge
+[*]Energy meter (can be switched off)
+[*]Violet outlines, wisps, sparkles, a rising hum
+[/list]
+[h2]Controls[/h2]
+[list]
+[*][b]LMB (hands empty)[/b] - lift the objects around the aim point
+[*][b]Hold LMB (holding), release[/b] - charge and throw them as a volley
+[*][b]RMB[/b] - put them down gently
+[/list]
+[h2]Settings (Mod Manager - the mod - Options)[/h2]
+[list]
+[*]Pick-up radius 1-8 m: [i]3 m[/i]
+[*]Max objects 1-20: [i]8[/i]
+[*]Heaviest object 10-1000 kg: [i]200 kg[/i]
+[*]Throw power: [i]x1[/i]
+[*]Reach 5-100 m: [i]40 m[/i]
+[*]Energy meter: [i]on[/i]
+[*]Energy lasts 5-60 s: [i]15 s[/i]
+[/list]
+[h2]Known limits[/h2]
+[list]
+[*]Vehicles and players are never picked up
+[*]Putting the tool away drops everything
+[/list]
+
+Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

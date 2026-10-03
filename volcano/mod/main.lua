@@ -1,0 +1,627 @@
+#version 2
+-- Volcano / Вулкан
+-- Magma core tool. LMB on the ground: a volcano grows there in a few seconds (seven
+-- rock layers rise out of the ground one after another), then erupts in phases:
+-- rumble and smoke, lava bombs (glowing rocks thrown in arcs that punch craters and
+-- start fires; some roll down the slopes as lava flows), and a final blast that blows
+-- the summit off. Then it cools down and stays as a dead cone.
+-- RMB during the eruption: final blast now. R (no eruption running): remove the cones.
+--
+-- Server: cone layers (spawned static, raised with SetBodyTransform), bombs (dynamic
+-- bodies), holes, fires, explosions, glow of the server-spawned shapes, tremors.
+-- Client: sounds, smoke/sparks/ash particles, light, camera shake, HUD.
+
+#include "script/include/player.lua"
+#include "script/toolanimation.lua"
+
+local TOOL = "volcano"
+local LAYERS = 7
+local CONE_W, CONE_H = 73, 26          -- voxels (cone vox: 73 x 26 x 73 in Teardown axes)
+local CRATER_D = 5                     -- crater depth in voxels
+local LAYER_TIME = 0.7                 -- s per layer rising
+local GROW_TIME = LAYERS * LAYER_TIME
+local MAX_BOMBS = 30
+local MAX_CONES = 4
+local HOLES_PER_UPDATE = 3
+local FIRES_PER_UPDATE = 2
+local TREMOR_PER_UPDATE = 20
+local COOL_TIME = 15
+local CONE_FILES = { "MOD/vox/cone_1.vox", "MOD/vox/cone_2.vox", "MOD/vox/cone_3.vox", "MOD/vox/cone_4.vox",
+	"MOD/vox/cone_5.vox", "MOD/vox/cone_6.vox", "MOD/vox/cone_7.vox" }
+local SIZES = { 3, 4, 6 }              -- vox scale per size setting (voxel = 0.1 * scale m)
+
+local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
+local function rnd(a, b) return a + (b - a) * math.random() end
+local function smooth(a, b, x) local t = clamp((x - a) / (b - a), 0, 1) return t * t * (3 - 2 * t) end
+local function getF(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetFloat(key) end return d end
+local function getI(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetInt(key) end return d end
+local function getB(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetBool(key) end return d end
+local function tr(en, ru) if GetInt("options.language") == 7 then return ru end return en end
+
+function readSettings()
+	return {
+		size = math.floor(clamp(getI("size", 2), 1, 3)),
+		strength = clamp(getF("strength", 1), 0.5, 2),
+		duration = clamp(getF("duration", 45), 20, 120),
+		fire = getB("fire", true),
+		ash = getB("ash", true),
+	}
+end
+
+---------------------------------------------------------------------------
+-- SERVER
+---------------------------------------------------------------------------
+
+function server.init()
+	RegisterTool(TOOL, tr("Volcano", "Вулкан"), "MOD/prefab/tool.xml", 6)
+	server.v = nil
+	server.cones = {}          -- every cone body ever raised (for R)
+	server.bombs = {}
+	shared.v = { phase = "idle", t = 0, T = 1, x = 0, y = 0, z = 0, top = 0, R = 0, k = 0, n = 0, layers = 0,
+		launchN = 0, impN = 0, ix = 0, iy = 0, iz = 0, blastN = 0, bombs = {}, msg = "", mn = 0 }
+end
+
+local function message(kind)
+	shared.v.msg = kind
+	shared.v.mn = shared.v.mn + 1
+end
+
+function server.tick(dt)
+	for p in PlayersAdded() do SetToolEnabled(TOOL, true, p) end
+	for p in Players() do
+		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
+			if InputPressed("usetool", p) then server.place(p) end
+			if InputPressed("grab", p) and server.v and (server.v.phase == "rumble" or server.v.phase == "erupt") then server.blast(server.v) end
+		end
+	end
+end
+
+function server.place(p)
+	if server.v then message("busy") return end
+	local eye = GetPlayerEyeTransform(p)
+	local fwd = TransformToParentVec(eye, Vec(0, 0, -1))
+	QueryRejectPlayer(p)
+	QueryRequire("physical static")
+	local hit, dist, n = QueryRaycast(eye.pos, fwd, 150)
+	if not hit or n[2] < 0.5 then message("aim") return end
+	local s = readSettings()
+	local scale = SIZES[s.size]
+	local vs = 0.1 * scale
+	local R = CONE_W * vs * 0.5
+	local g = VecAdd(eye.pos, VecScale(fwd, dist))
+	-- keep the cone away from the player: at least its radius plus 4 m
+	local flat = Vec(g[1] - eye.pos[1], 0, g[3] - eye.pos[3])
+	local fl = VecLength(flat)
+	if fl < R + 4 then
+		local dir = fl > 0.1 and VecScale(flat, 1 / fl) or VecNormalize(Vec(fwd[1], 0, fwd[3]))
+		local probe = VecAdd(Vec(eye.pos[1], eye.pos[2] + 30, eye.pos[3]), VecScale(dir, R + 4))
+		QueryRequire("physical static")
+		local h2, d2 = QueryRaycast(probe, Vec(0, -1, 0), 80)
+		if not h2 then message("aim") return end
+		g = VecAdd(probe, Vec(0, -d2, 0))
+	end
+	if #server.cones >= MAX_CONES * LAYERS then server.clear() end
+	local v = {
+		phase = "grow", t = 0, s = s, scale = scale, vs = vs, R = R, ground = g, owner = p,
+		rot = QuatEuler(0, rnd(0, 360), 0), layers = {}, offset = nil, bombAcc = 0,
+		top = VecAdd(g, Vec(0, (CONE_H - CRATER_D) * vs - 0.3 * vs * 4, 0)),
+		rumbleT = s.duration * 0.25, eruptT = s.duration * 0.75, tracked = {}, cursor = 1, scanT = 0,
+		glowT = 0, glow = 0.2,
+	}
+	server.v = v
+	local sv = shared.v
+	sv.phase = "grow"
+	sv.t = 0
+	sv.T = GROW_TIME
+	sv.x, sv.y, sv.z = g[1], g[2], g[3]
+	sv.top = v.top[2]
+	sv.R = R
+	sv.k = 0
+	sv.n = sv.n + 1
+	sv.layers = 0
+	server.clearFootprint(v)
+end
+
+-- players and loose bodies standing where the cone will be are pushed out and up
+function server.clearFootprint(v)
+	local g, R = v.ground, v.R
+	for p in Players() do
+		local pp = GetPlayerTransform(p).pos
+		local d = Vec(pp[1] - g[1], 0, pp[3] - g[3])
+		local l = VecLength(d)
+		if l < R + 1 then
+			local out = l > 0.1 and VecScale(d, 1 / l) or Vec(1, 0, 0)
+			SetPlayerVelocity(VecAdd(VecScale(out, 9), Vec(0, 6, 0)), p)
+		end
+	end
+	QueryRequire("physical dynamic")
+	local list = QueryAabbBodies(VecSub(g, Vec(R, 1, R)), VecAdd(g, Vec(R, CONE_H * v.vs, R)))
+	for i = 1, math.min(#list, 60) do
+		local b = list[i]
+		if GetBodyPlayer(b) == 0 then
+			local bp = GetBodyTransform(b).pos
+			local d = Vec(bp[1] - g[1], 0, bp[3] - g[3])
+			local l = VecLength(d)
+			local out = l > 0.1 and VecScale(d, 1 / l) or Vec(1, 0, 0)
+			SetBodyVelocity(b, VecAdd(VecScale(out, 8), Vec(0, 7, 0)))
+		end
+	end
+end
+
+-- raise layer k: spawned below its place, then lifted into it over LAYER_TIME
+function server.spawnLayer(v, k)
+	local vs = v.vs
+	local drop = math.ceil(CONE_H / LAYERS) * vs + 0.5
+	local xml = "<body dynamic='false'><vox file='" .. CONE_FILES[k] .. "' scale='" .. v.scale .. "'/></body>"
+	local base = Transform(VecAdd(v.ground, Vec(0, -0.3 * vs * 4, 0)), v.rot)
+	local ents = Spawn(xml, base, true)
+	local body, shape = 0, 0
+	for i = 1, #ents do
+		local ty = GetEntityType(ents[i])
+		if ty == "body" and body == 0 then body = ents[i] end
+		if ty == "shape" and shape == 0 then shape = ents[i] end
+	end
+	if body == 0 then return end
+	if not v.offset then
+		-- where the bottom centre of the model sits in body space, whatever the loader's origin convention
+		v.offset = Vec(0, 0, 0)
+		if shape ~= 0 then
+			local sx, sy, sz, svs = GetShapeSize(shape)
+			local bottom = TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * svs * 0.5, 0, sz * svs * 0.5))
+			v.offset = TransformToLocalPoint(GetBodyTransform(body), bottom)
+		end
+		v.final = Transform(VecSub(base.pos, QuatRotateVec(v.rot, v.offset)), v.rot)
+	end
+	local layer = { body = body, shapes = GetBodyShapes(body), t = 0, drop = drop }
+	v.layers[#v.layers + 1] = layer
+	server.cones[#server.cones + 1] = body
+	SetTag(body, "volcano")
+	server.placeLayer(v, layer)
+	shared.v.layers = #v.layers
+end
+
+function server.placeLayer(v, layer)
+	local f = smooth(0, 1, layer.t / LAYER_TIME)
+	local y = -layer.drop * (1 - f)
+	SetBodyTransform(layer.body, Transform(VecAdd(v.final.pos, Vec(0, y, 0)), v.final.rot))
+end
+
+function server.update(dt)
+	server.updateBombs(dt)
+	local v = server.v
+	if not v then return end
+	v.t = v.t + dt
+	local sv = shared.v
+	sv.t = v.t
+	if v.phase == "grow" then
+		local want = math.min(LAYERS, math.floor(v.t / LAYER_TIME) + 1)
+		if #v.layers < want then server.spawnLayer(v, #v.layers + 1) end
+		for i = 1, #v.layers do
+			local l = v.layers[i]
+			if l.t < LAYER_TIME then
+				l.t = math.min(LAYER_TIME, l.t + dt)
+				server.placeLayer(v, l)
+			end
+		end
+		sv.k = 0.1
+		if v.t >= GROW_TIME + 0.2 then server.setPhase(v, "rumble", v.rumbleT) end
+	elseif v.phase == "rumble" then
+		sv.k = 0.2 + 0.4 * smooth(0, v.rumbleT, v.t)
+		server.tremors(v, dt, sv.k * 0.6)
+		server.setGlow(v, dt, 0.3 + 0.7 * sv.k)
+		if v.t >= v.rumbleT then server.setPhase(v, "erupt", v.eruptT) end
+	elseif v.phase == "erupt" then
+		local s = v.s
+		sv.k = 0.7 + 0.3 * math.sin(v.t * 1.3) ^ 2
+		server.tremors(v, dt, sv.k)
+		server.setGlow(v, dt, 1.4)
+		v.bombAcc = v.bombAcc + dt * 3 * s.strength * (0.6 + 0.8 * sv.k)
+		if v.bombAcc >= 1 then
+			v.bombAcc = v.bombAcc - 1
+			server.launch(v, math.random() < 0.25)
+		end
+		if v.t >= v.eruptT then server.blast(v) end
+	elseif v.phase == "cool" then
+		for i = 1, 2 do
+			if (v.burst or 0) > 0 then
+				v.burst = v.burst - 1
+				server.launch(v, false)
+			end
+		end
+		sv.k = 0.6 * (1 - smooth(0, COOL_TIME, v.t))
+		server.setGlow(v, dt, 0.15 + 1.2 * (1 - smooth(0, COOL_TIME, v.t)))
+		if v.t >= COOL_TIME then
+			server.v = nil
+			sv.phase = "idle"
+			sv.k = 0
+		end
+	end
+end
+
+function server.setPhase(v, phase, T)
+	v.phase = phase
+	v.t = 0
+	local sv = shared.v
+	sv.phase = phase
+	sv.t = 0
+	sv.T = T
+end
+
+-- glowing lava in the cone: emissive scale of the server-spawned layer shapes, updated 4x a second
+function server.setGlow(v, dt, target)
+	v.glowT = v.glowT - dt
+	if v.glowT > 0 then return end
+	v.glowT = 0.25
+	v.glow = target
+	for i = 1, #v.layers do
+		local l = v.layers[i]
+		for j = 1, #l.shapes do
+			if IsHandleValid(l.shapes[j]) then SetShapeEmissiveScale(l.shapes[j], target) end
+		end
+	end
+end
+
+function server.tremors(v, dt, I)
+	v.scanT = v.scanT - dt
+	if v.scanT <= 0 then
+		v.scanT = 1
+		local g = v.ground
+		local r = v.R * 3
+		QueryRequire("physical dynamic")
+		local found = QueryAabbBodies(VecSub(g, Vec(r, 5, r)), VecAdd(g, Vec(r, 20, r)))
+		local list = {}
+		for i = 1, #found do
+			if GetBodyPlayer(found[i]) == 0 and not HasTag(found[i], "volcano_bomb") then list[#list + 1] = found[i] end
+			if #list >= 150 then break end
+		end
+		v.tracked = list
+		v.cursor = 1
+	end
+	local n = #v.tracked
+	for k = 1, math.min(n, TREMOR_PER_UPDATE) do
+		local b = v.tracked[v.cursor]
+		v.cursor = (v.cursor % n) + 1
+		if IsHandleValid(b) and IsBodyDynamic(b) then
+			local mass = GetBodyMass(b)
+			if mass > 0 then
+				local massK = clamp(600 / mass, 0.05, 1)
+				ApplyBodyImpulse(b, GetBodyTransform(b).pos, VecScale(Vec(rnd(-1, 1), rnd(0, 1.2), rnd(-1, 1)), mass * 0.9 * I * massK))
+			end
+		end
+	end
+end
+
+-- a lava bomb: thrown in an arc from the crater; a flow rolls down the slope from the rim
+function server.launch(v, flow)
+	local alive = 0
+	for i = 1, #server.bombs do if not server.bombs[i].dead then alive = alive + 1 end end
+	if alive >= MAX_BOMBS then return end
+	local s = v.s
+	local a = rnd(0, 6.2832)
+	local out = Vec(math.cos(a), 0, math.sin(a))
+	local pos, vel
+	local k = math.sqrt(s.strength) * (0.7 + 0.3 * v.scale / 4)
+	if flow then
+		pos = VecAdd(v.top, VecAdd(VecScale(out, v.R * 0.25), Vec(0, 0.6, 0)))
+		vel = VecAdd(VecScale(out, rnd(3, 5)), Vec(0, 2, 0))
+	else
+		pos = VecAdd(v.top, Vec(0, 1.0, 0))
+		vel = VecAdd(VecScale(out, rnd(4, 11) * k), Vec(0, rnd(14, 22) * k, 0))
+	end
+	local bscale = clamp(v.scale / 3, 1, 2)
+	local ents = Spawn("<body dynamic='true'><vox file='MOD/vox/bomb.vox' scale='" .. bscale .. "'/></body>", Transform(pos, QuatEuler(rnd(0, 360), rnd(0, 360), 0)))
+	for i = 1, #ents do
+		if GetEntityType(ents[i]) == "body" then
+			local b = ents[i]
+			SetTag(b, "volcano_bomb")
+			SetBodyVelocity(b, vel)
+			SetBodyAngularVelocity(b, Vec(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4)))
+			server.bombs[#server.bombs + 1] = { body = b, shapes = GetBodyShapes(b), t = 0, prevVel = VecCopy(vel), flow = flow, landed = false, glow = 1, glowT = 0 }
+			local sv = shared.v
+			sv.launchN = sv.launchN + 1
+			break
+		end
+	end
+	server.syncBombs()
+end
+
+function server.syncBombs()
+	local list = {}
+	for i = 1, #server.bombs do
+		local b = server.bombs[i]
+		if not b.landed and not b.dead then list[#list + 1] = b.body end
+	end
+	shared.v.bombs = list
+end
+
+-- bombs in flight: a sudden stop is a landing: crater, fire; then they cool and go
+function server.updateBombs(dt)
+	local holes, fires, changed = 0, 0, false
+	local v = server.v
+	local s = v and v.s or readSettings()
+	for i = #server.bombs, 1, -1 do
+		local b = server.bombs[i]
+		b.t = b.t + dt
+		if not IsHandleValid(b.body) then
+			table.remove(server.bombs, i)
+			changed = true
+		else
+			if not b.landed then
+				local vel = GetBodyVelocity(b.body)
+				local hit = b.t > 0.3 and VecLength(VecSub(vel, b.prevVel)) > 6
+				local settled = b.flow and b.t > 1.5 and VecLength(vel) < 1
+				b.prevVel = vel
+				if (hit or settled or b.t > 10) and holes < HOLES_PER_UPDATE then
+					b.landed = true
+					b.t = 0
+					changed = true
+					local pos = GetBodyTransform(b.body).pos
+					local k = math.sqrt(s.strength)
+					if not b.flow then
+						MakeHole(pos, 1.3 * k, 0.9 * k, 0.4 * k, false)
+						holes = holes + 1
+						for p in Players() do
+							local d = VecLength(VecSub(GetPlayerTransform(p).pos, pos))
+							if d < 2.5 then ApplyPlayerDamage(p, 0.15 * k, "volcano", v and v.owner or 0) end
+						end
+					end
+					if s.fire and fires < FIRES_PER_UPDATE then
+						SpawnFire(pos)
+						fires = fires + 1
+					end
+					local sv = shared.v
+					sv.impN = sv.impN + 1
+					sv.ix, sv.iy, sv.iz = pos[1], pos[2], pos[3]
+				end
+			else
+				-- cooling rock: the glow fades, after 20 s it is gone
+				b.glowT = b.glowT - dt
+				if b.glowT <= 0 then
+					b.glowT = 0.5
+					b.glow = math.max(0, 1 - b.t / 8)
+					for j = 1, #b.shapes do if IsHandleValid(b.shapes[j]) then SetShapeEmissiveScale(b.shapes[j], b.glow) end end
+				end
+				if b.t > 20 then
+					Delete(b.body)
+					table.remove(server.bombs, i)
+					changed = true
+				end
+			end
+		end
+	end
+	if changed then server.syncBombs() end
+end
+
+-- the final blast: summit blown off, a ring of explosions, a burst of bombs
+function server.blast(v)
+	local s = v.s
+	local k = s.strength
+	local top = v.top
+	local vs = v.vs
+	Explosion(VecAdd(top, Vec(0, 1, 0)), clamp(2.5 + 1.5 * k, 0.5, 4), v.owner)
+	for i = 1, 5 do
+		local a = i / 5 * 6.2832
+		Explosion(VecAdd(top, Vec(math.cos(a) * v.R * 0.3, -1, math.sin(a) * v.R * 0.3)), clamp(1.5 + k, 0.5, 4), v.owner)
+	end
+	local r = (CRATER_D + 4) * vs * clamp(0.7 + 0.3 * k, 0.8, 1.3)
+	MakeHole(VecAdd(top, Vec(0, CRATER_D * vs * 0.5, 0)), r, r, r * 0.9, false)
+	v.burst = math.floor(8 + 8 * k)      -- launched 2 per step during the cool-down
+	shared.v.blastN = shared.v.blastN + 1
+	server.setPhase(v, "cool", COOL_TIME)
+end
+
+-- R: remove the cones (only while nothing erupts)
+function server.clear()
+	if server.v then return end
+	for i = 1, #server.cones do
+		if IsHandleValid(server.cones[i]) then Delete(server.cones[i]) end
+	end
+	server.cones = {}
+	message("cleared")
+end
+
+---------------------------------------------------------------------------
+-- CLIENT
+---------------------------------------------------------------------------
+
+function client.init()
+	client.snd = {}
+	for _, n in ipairs({ "launch", "impact", "blast", "place" }) do client.snd[n] = LoadSound("MOD/snd/" .. n .. ".ogg", 120) end
+	client.loops = { grind = LoadLoop("MOD/snd/grind.ogg", 60), rumble = LoadLoop("MOD/snd/rumble.ogg", 120), roar = LoadLoop("MOD/snd/roar.ogg", 160) }
+	client.anim = {}
+	client.seen = nil
+	client.flash = 0
+	client.msgT = 0
+	client.msg = ""
+end
+
+local MESSAGES = {
+	busy = { "One volcano at a time", "Только один вулкан за раз" },
+	aim = { "Aim at the ground", "Наведите на землю" },
+	cleared = { "Cones removed", "Конусы убраны" },
+}
+
+function client.tick(dt)
+	for p in PlayersAdded() do client.anim[p] = ToolAnimator() end
+	for p in PlayersRemoved() do client.anim[p] = nil end
+	local sv = shared.v
+	local seen = client.seen
+	if not seen then
+		seen = { n = sv.n, launchN = sv.launchN, impN = sv.impN, blastN = sv.blastN, mn = sv.mn }
+		client.seen = seen
+	end
+	local base = Vec(sv.x, sv.y, sv.z)
+	local top = Vec(sv.x, sv.top, sv.z)
+	if sv.n ~= seen.n then seen.n = sv.n PlaySound(client.snd.place, base, 0.8) end
+	if sv.launchN ~= seen.launchN then seen.launchN = sv.launchN PlaySound(client.snd.launch, top, 0.7) end
+	if sv.impN ~= seen.impN then seen.impN = sv.impN PlaySound(client.snd.impact, Vec(sv.ix, sv.iy, sv.iz), 0.8) end
+	if sv.blastN ~= seen.blastN then
+		seen.blastN = sv.blastN
+		PlaySound(client.snd.blast, top, 1.0)
+		client.flash = 0.8
+	end
+	if sv.mn ~= seen.mn then
+		seen.mn = sv.mn
+		local m = MESSAGES[sv.msg]
+		if m then client.msg, client.msgT = tr(m[1], m[2]), 2 end
+	end
+	client.msgT = math.max(0, client.msgT - dt)
+	client.flash = math.max(0, client.flash - dt)
+
+	if sv.phase == "grow" then
+		PlayLoop(client.loops.grind, base, 0.9)
+	elseif sv.phase == "rumble" or sv.phase == "erupt" or sv.phase == "cool" then
+		PlayLoop(client.loops.rumble, base, 0.4 + 0.6 * sv.k)
+		if sv.phase ~= "rumble" then PlayLoop(client.loops.roar, top, sv.k) end
+	end
+	if sv.phase ~= "idle" then
+		local cam = GetPlayerCameraTransform()
+		local d = VecLength(VecSub(cam.pos, base))
+		local near = clamp(1 - (d - sv.R) / (sv.R * 8), 0, 1)
+		local shake = (sv.phase == "grow" and 0.5 or sv.k) * near
+		if shake > 0.02 then ShakeCamera(shake) end
+	end
+
+	if GetPlayerTool() == TOOL and GetPlayerCanUseTool() and InputPressed("r") and sv.phase == "idle" then
+		ServerCall("server.clear")
+	end
+	for p in Players() do
+		if GetPlayerTool(p) == TOOL then
+			local a = client.anim[p]
+			if not a then a = ToolAnimator() client.anim[p] = a end
+			tickToolAnimator(a, dt, nil, p)
+		end
+	end
+end
+
+-- smoke column, lava fountain, bomb trails, ash (at most 44 particles per step)
+function client.update(dt)
+	local sv = shared.v
+	if sv.phase == "idle" then return end
+	local s = readSettings()
+	local base = Vec(sv.x, sv.y, sv.z)
+	local top = Vec(sv.x, sv.top, sv.z)
+	if sv.phase == "grow" then
+		ParticleReset()
+		ParticleType("smoke")
+		ParticleColor(0.45, 0.4, 0.35)
+		ParticleRadius(0.6, 1.8)
+		ParticleAlpha(0.5, 0)
+		ParticleGravity(0.5)
+		for i = 1, 6 do
+			local a = rnd(0, 6.2832)
+			SpawnParticle(VecAdd(base, Vec(math.cos(a) * sv.R, 0.3, math.sin(a) * sv.R)), Vec(math.cos(a) * 2, 1, math.sin(a) * 2), rnd(1.5, 3))
+		end
+		return
+	end
+	-- smoke column
+	ParticleReset()
+	ParticleType("smoke")
+	ParticleColor(0.2, 0.18, 0.17, 0.35, 0.33, 0.32)
+	ParticleRadius(1 + sv.R * 0.05, 3 + sv.R * 0.15)
+	ParticleAlpha(0.8, 0)
+	ParticleGravity(2)
+	ParticleDrag(0.1)
+	for i = 1, math.floor(3 + 5 * sv.k) do
+		SpawnParticle(VecAdd(top, Vec(rnd(-1, 1), 0.5, rnd(-1, 1))), Vec(rnd(-1, 1), rnd(4, 9) * (0.5 + sv.k), rnd(-1, 1)), rnd(6, 12))
+	end
+	if sv.phase == "erupt" then
+		ParticleReset()
+		ParticleType("plain")
+		ParticleColor(1, 0.75, 0.3, 1, 0.25, 0.05)
+		ParticleRadius(0.15, 0.05)
+		ParticleEmissive(10, 0)
+		ParticleGravity(-10)
+		ParticleCollide(1)
+		for i = 1, 10 do SpawnParticle(VecAdd(top, Vec(0, 0.5, 0)), Vec(rnd(-4, 4), rnd(8, 18), rnd(-4, 4)), rnd(1, 2.5)) end
+	end
+	-- glowing smoke trail behind each flying bomb
+	ParticleReset()
+	ParticleType("smoke")
+	ParticleColor(1, 0.5, 0.2, 0.25, 0.22, 0.2)
+	ParticleRadius(0.3, 0.9)
+	ParticleAlpha(0.7, 0)
+	ParticleEmissive(3, 0)
+	ParticleGravity(0.5)
+	local list = sv.bombs
+	for i = 1, math.min(#list, 20) do
+		local b = list[i]
+		if IsHandleValid(b) then SpawnParticle(GetBodyTransform(b).pos, Vec(0, 0.5, 0), 1.5) end
+	end
+	-- ash falling around the player
+	if s.ash and (sv.phase == "erupt" or sv.phase == "cool") then
+		local cam = GetPlayerCameraTransform()
+		if VecLength(VecSub(cam.pos, base)) < sv.R * 10 then
+			ParticleReset()
+			ParticleType("plain")
+			ParticleColor(0.3, 0.3, 0.3)
+			ParticleRadius(0.04)
+			ParticleGravity(-1.5)
+			ParticleDrag(0.6)
+			for i = 1, 6 do SpawnParticle(VecAdd(cam.pos, Vec(rnd(-15, 15), rnd(6, 12), rnd(-15, 15))), Vec(rnd(-0.5, 0.5), -1, rnd(-0.5, 0.5)), 6) end
+		end
+	end
+end
+
+function client.render(dt)
+	local sv = shared.v
+	if sv.phase == "idle" or sv.phase == "grow" then return end
+	local flicker = 0.85 + 0.3 * math.random()
+	PointLight(Vec(sv.x, sv.top + 2, sv.z), 1, 0.45, 0.15, (2 + 10 * sv.k) * flicker)
+	local list = sv.bombs
+	for i = 1, math.min(#list, 8) do
+		if IsHandleValid(list[i]) then PointLight(GetBodyTransform(list[i]).pos, 1, 0.5, 0.2, 1.5) end
+	end
+end
+
+local PHASES = {
+	grow = { "Growing", "Растёт" },
+	rumble = { "Rumbling", "Гудит" },
+	erupt = { "ERUPTION", "ИЗВЕРЖЕНИЕ" },
+	cool = { "Cooling down", "Остывает" },
+}
+
+function client.draw(dt)
+	if client.flash > 0.01 then
+		UiPush()
+			UiColor(1, 0.7, 0.4, client.flash * 0.6)
+			UiRect(UiWidth(), UiHeight())
+		UiPop()
+	end
+	if GetPlayerTool() ~= TOOL then return end
+	if GetBool("game.ui.hidemods") or not GetPlayerCanUseTool() then return end
+	local sv = shared.v
+	UiPush()
+		UiTranslate(UiCenter(), UiHeight() - 160)
+		UiAlign("center middle")
+		UiTextShadow(0, 0, 0, 0.6, 1.5)
+		UiFont("regular.ttf", 22)
+		UiColor(1, 1, 1, 0.9)
+		if sv.phase == "idle" then
+			UiText(tr("LMB: raise a volcano on the ground    R: remove the cones", "ЛКМ: поднять вулкан на земле    R: убрать конусы"))
+		elseif sv.phase == "rumble" or sv.phase == "erupt" then
+			UiText(tr("RMB: final blast now", "ПКМ: финальный взрыв сейчас"))
+		end
+		local ph = PHASES[sv.phase]
+		if ph then
+			UiTranslate(0, 30)
+			UiFont("bold.ttf", 22)
+			UiColor(1, 0.55, 0.25, 1)
+			UiText(tr(ph[1], ph[2]))
+			UiTranslate(0, 22)
+			UiAlign("left middle")
+			UiTranslate(-100, 0)
+			UiColor(0, 0, 0, 0.5)
+			UiRect(200, 6)
+			UiColor(1, 0.5, 0.2, 1)
+			UiRect(200 * clamp(sv.t / math.max(sv.T, 0.01), 0, 1), 6)
+		end
+		if client.msgT > 0 then
+			UiAlign("center middle")
+			UiTranslate(100, 28)
+			UiColor(1, 0.6, 0.3, math.min(1, client.msgT))
+			UiFont("regular.ttf", 20)
+			UiText(client.msg)
+		end
+	UiPop()
+end

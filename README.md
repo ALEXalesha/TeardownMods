@@ -20,9 +20,10 @@ and its own README in English and Russian. Russian version of this page: [README
 | [time-slow](time-slow) | Time Slow | Hold a key to slow the world down. |
 | [tornado](tornado) | Tornado | Spawn a wandering or steerable tornado. |
 | [trampoline-floor](trampoline-floor) | Trampoline Floor | Bounce pads and a bouncy ground mode. |
+| [volcano](volcano) | Volcano | Raise a volcano and watch it erupt: lava bombs, fires, ash, final blast. |
 <!-- /mods -->
 
-More mods are in progress (volcano, tsunami).
+More mods are in progress (tsunami).
 
 ## Shared tooling
 

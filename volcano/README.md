@@ -29,7 +29,9 @@ Budgets per physics step: at most 1 bomb spawned (2 during the burst), 6 bomb cr
 | Ash fall | on | `savegame.mod.ash` |
 | Debug line (for testing) | on | `savegame.mod.debug` |
 
-The debug line (bottom left while a volcano is active) shows `volcano: click x y z | cone body x y z | cone bounds centre x y z (width x height) | smoke x z | off d m`: where you clicked, the cone body's position, the centre of the cone's world bounds, where smoke and lava come from, and how far the cone stands from the click.
+The debug line (bottom left while a volcano is active) shows `volcano: click x y z | cone body x y z | cone bounds centre x y z | off d m | cone height h m (want 10.4) | layer want/actual y: 1 a/b, 2 a/b, ...`: where you clicked, the cone body's position, the centre of the cone's world bounds, how far the cone stands from the click, the cone's height, and for each layer the height it should start at and the height it really starts at (relative to the click). While the probe is still being read it says `cone bounds not valid yet | probe waiting`; if the probe never gets valid bounds it ends with `probe: no valid bounds, fallback`.
+
+Third in-game report (a flat "pancake"): `GetShapeBounds` covers only the filled voxels, and each layer model is full cone size but holds one height band, so correcting every layer by its own bounds bottom pulled all layers down to the ground. Now every layer is spawned with the same transform from the probe of the bottom layer, and the probe is read over up to 20 ticks (a just-spawned shape may not have valid bounds yet). `tests/strict_law.lua` models that (filled-voxel bounds, nothing valid in the spawn tick) and checks each layer's height and the 10.4 m cone height. `tests/field_data_law.lua` replays Alexey's in-game debug line of build a195f2f (centre pivot: body origin 4.7 m above the click; cone 39.8 x 1.6 m): the old code gives exactly that 1.6 m cone, the current one a 10.4 m cone with the top layer 9.6 m above the bottom one.
 
 ## Install, build, test
 

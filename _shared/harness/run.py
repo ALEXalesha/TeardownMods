@@ -133,9 +133,28 @@ class Harness:
         H.split = split
         H.preprocess = lambda rel: preprocess(os.path.join(self.mod_dir, rel), self.mod_dir)
         H.voxSizes = lambda path, *_: self._vox_sizes(path)
+        H.voxContent = lambda path, *_: self._vox_content(path)
         self.lua.execute("H.wrapAll()")
         with open(os.path.join(HERE, "driver.lua"), encoding="utf-8") as f:
             self.lua.execute(f.read())
+
+    def _vox_content(self, full_path):
+        """Per model: min and max index of the filled voxels, Teardown axis order (x, z, y)."""
+        try:
+            from voxio import read_vox
+            vf = read_vox(full_path)
+        except Exception:
+            return None
+        out = []
+        for m in vf.models:
+            if not m.voxels:
+                out.append([0, 0, 0, 0, 0, 0])
+                continue
+            xs = [k[0] for k in m.voxels]
+            ys = [k[1] for k in m.voxels]
+            zs = [k[2] for k in m.voxels]
+            out.append([min(xs), min(zs), min(ys), max(xs), max(zs), max(ys)])
+        return self._to_lua(out)
 
     def _vox_sizes(self, full_path):
         """Shape sizes of a .vox in Teardown axis order (MagicaVoxel x, z, y)."""

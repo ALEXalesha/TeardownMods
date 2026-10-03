@@ -156,88 +156,121 @@ function server.clearFootprint(v)
 end
 
 -- raise layer k: spawned below its place, then lifted into it over LAYER_TIME
--- Where does the game put a spawned vox relative to its spawn transform? The first two versions
--- assumed a pivot and corrected it with shape-size maths and SetBodyTransform; in the game the
--- cone still stood about 20 m beside the smoke. Now, like the game's own spawn menu: a probe of the
--- cone model is spawned once, its world bounds are read in the same tick (GetShapeBounds - no
--- assumption about pivot or model axes), and that offset is used to spawn every layer directly at
--- its final place (nothing is moved afterwards, static bodies may not move at all).
-function server.calibrateCone(v)
-	local probeAt = Transform(VecAdd(v.ground, Vec(0, 150, 0)), v.rot)
-	local ents = Spawn("<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[1] .. "' scale='" .. v.scale .. "'/></body>", probeAt, true)
-	local off = nil
-	for i = 1, #ents do
-		if GetEntityType(ents[i]) == "shape" and not off then
-			local mn, mx = GetShapeBounds(ents[i])
+-- Where does the game put a spawned vox relative to its spawn transform? Not documented, and two
+-- assumptions were wrong in the game. So: a probe of the bottom cone layer is spawned and its world
+-- bounds are read (GetShapeBounds, as the game's spawn menu does). Two lessons from the game:
+-- bounds cover only the FILLED voxels (each layer model is full cone size but holds one height
+-- band - correcting every layer by its own bounds bottom flattened the cone into a pancake), and
+-- a just-spawned shape may not have valid bounds yet - so the probe is read over several ticks.
+local LAYER_VOX = math.ceil(CONE_H / LAYERS)     -- voxel rows per layer
+
+local function validBounds(mn, mx)
+	return mx[1] - mn[1] > 0.05 and mx[2] - mn[2] > 0.05 and mx[3] - mn[3] > 0.05
+end
+
+local function shapeList(ents)
+	local out = {}
+	for i = 1, #ents do if GetEntityType(ents[i]) == "shape" then out[#out + 1] = ents[i] end end
+	return out
+end
+
+-- start the probe (once per volcano)
+function server.startProbe(v)
+	v.probeAt = Transform(VecAdd(v.ground, Vec(0, 150, 0)), v.rot)
+	v.probeEnts = Spawn("<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[1] .. "' scale='" .. v.scale .. "'/></body>", v.probeAt, true)
+	v.probeTries = 0
+end
+
+-- read the probe; true when the offset is known (measured, or the fallback after 20 ticks)
+function server.readProbe(v)
+	if v.offLocal then return true end
+	if not v.probeEnts then server.startProbe(v) end
+	v.probeTries = v.probeTries + 1
+	for _, sh in ipairs(shapeList(v.probeEnts)) do
+		local mn, mx = GetShapeBounds(sh)
+		if validBounds(mn, mx) then
 			local bottom = Vec((mn[1] + mx[1]) * 0.5, mn[2], (mn[3] + mx[3]) * 0.5)
-			off = TransformToLocalVec(probeAt, VecSub(bottom, probeAt.pos))   -- spawn point -> bottom centre, in cone space
+			v.offLocal = TransformToLocalVec(v.probeAt, VecSub(bottom, v.probeAt.pos))
+			v.measured = true
 		end
 	end
-	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
-	v.offLocal = off or Vec(0, 0, 0)
-	v.measured = off ~= nil
+	if not v.offLocal and v.probeTries >= 20 then
+		v.offLocal = Vec(0, 0, 0)                       -- fallback: spawn point = bottom centre
+		v.measured = false
+	end
+	if v.offLocal then
+		for i = 1, #v.probeEnts do if GetEntityType(v.probeEnts[i]) == "body" then Delete(v.probeEnts[i]) end end
+	end
+	return v.offLocal ~= nil
+end
+
+function server.spawnLayer(v, k)
+	local want = VecAdd(v.ground, Vec(0, -0.3 * v.vs * 4, 0))         -- bottom centre of the cone, sunk a little
+	v.wantBottom = want
+	local xml = "<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[k] .. "' scale='" .. v.scale .. "'/></body>"
+	-- every layer model has the full cone size, so every layer is spawned with the same transform
+	local t = Transform(VecSub(want, QuatRotateVec(v.rot, v.offLocal)), v.rot)
+	local ents = Spawn(xml, t, true)
+	local body = 0
+	for i = 1, #ents do if GetEntityType(ents[i]) == "body" and body == 0 then body = ents[i] end end
+	if body == 0 then return end
+	local layer = { body = body, shapes = shapeList(ents), t = LAYER_TIME, drop = 0, k = k }
+	v.layers[#v.layers + 1] = layer
+	server.cones[#server.cones + 1] = body
+	shared.v.layers = #v.layers
 end
 
 local function layerBounds(layer)
 	local mn, mx = Vec(1e9, 1e9, 1e9), Vec(-1e9, -1e9, -1e9)
+	local any = false
 	for _, sh in ipairs(layer.shapes) do
 		if IsHandleValid(sh) then
 			local a, b = GetShapeBounds(sh)
-			for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
+			if validBounds(a, b) then
+				any = true
+				for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
+			end
 		end
 	end
-	return mn, mx
+	return mn, mx, any
 end
 
-function server.spawnLayer(v, k)
-	if not v.offLocal then server.calibrateCone(v) end
-	local want = VecAdd(v.ground, Vec(0, -0.3 * v.vs * 4, 0))         -- bottom centre of the cone, sunk a little
-	local xml = "<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[k] .. "' scale='" .. v.scale .. "'/></body>"
-	local body, shapes = 0, {}
-	for attempt = 1, 2 do
-		local t = Transform(VecSub(want, QuatRotateVec(v.rot, v.offLocal)), v.rot)
-		local ents = Spawn(xml, t, true)
-		body, shapes = 0, {}
-		for i = 1, #ents do
-			local ty = GetEntityType(ents[i])
-			if ty == "body" and body == 0 then body = ents[i] end
-			if ty == "shape" then shapes[#shapes + 1] = ents[i] end
-		end
-		if body == 0 then return end
-		-- check where it really is; if off, spawn it again where it belongs (once)
-		local mn, mx = layerBounds({ shapes = shapes })
-		local bottom = Vec((mn[1] + mx[1]) * 0.5, mn[2], (mn[3] + mx[3]) * 0.5)
-		local err = VecSub(want, bottom)
-		if VecLength(err) < 0.3 or attempt == 2 then break end
-		v.offLocal = VecSub(v.offLocal, TransformToLocalVec(Transform(Vec(0, 0, 0), v.rot), err))
-		Delete(body)
-	end
-	local layer = { body = body, shapes = shapes, t = LAYER_TIME, drop = 0 }
-	v.layers[#v.layers + 1] = layer
-	server.cones[#server.cones + 1] = body
-	shared.v.layers = #v.layers
-	server.anchorFromCone(v)
-end
-
--- smoke, lava, crater light and bombs come from where the cone really stands (its world bounds)
+-- smoke, lava, crater light and bombs come from where the cone really stands (its world bounds,
+-- as soon as they are valid); until then from the intended place
 function server.anchorFromCone(v)
 	local mn, mx = Vec(1e9, 1e9, 1e9), Vec(-1e9, -1e9, -1e9)
+	local n = 0
+	local per = {}
 	for i = 1, #v.layers do
-		local a, b = layerBounds(v.layers[i])
-		for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
+		local a, b, ok = layerBounds(v.layers[i])
+		if ok then
+			n = n + 1
+			for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
+			local wantY = v.wantBottom[2] + (v.layers[i].k - 1) * LAYER_VOX * v.vs
+			per[#per + 1] = string.format("%d %.1f/%.1f", v.layers[i].k, wantY - v.click[2], a[2] - v.click[2])
+		end
+	end
+	local sv = shared.v
+	local bt = (#v.layers > 0) and GetBodyTransform(v.layers[1].body).pos or v.click
+	if n == 0 then
+		sv.dbg = string.format("volcano: click %.1f %.1f %.1f | cone body %.1f %.1f %.1f | cone bounds not valid yet%s",
+			v.click[1], v.click[2], v.click[3], bt[1], bt[2], bt[3], v.offLocal and "" or " | probe waiting")
+		return
 	end
 	local cx, cz = (mn[1] + mx[1]) * 0.5, (mn[3] + mx[3]) * 0.5
 	v.centre = Vec(cx, v.click[2], cz)
 	v.ground = Vec(cx, v.ground[2], cz)
-	-- the layer models are all the full cone size, so any layer's box top is the cone top
-	v.top = Vec(cx, mx[2] - CRATER_D * v.vs, cz)
-	local sv = shared.v
+	if n == #v.layers and #v.layers == LAYERS then
+		v.top = Vec(cx, mx[2] - CRATER_D * v.vs, cz)          -- the top layer's top is the rim
+	else
+		v.top = Vec(cx, (v.wantBottom or v.ground)[2] + (CONE_H - CRATER_D) * v.vs, cz)
+	end
 	sv.x, sv.z = cx, cz
 	sv.top = v.top[2]
-	local bt = GetBodyTransform(v.layers[1].body).pos
-	sv.dbg = string.format("volcano: click %.1f %.1f %.1f | cone body %.1f %.1f %.1f | cone bounds centre %.1f %.1f %.1f (%.1f x %.1f m) | smoke %.1f %.1f | off %.2f m%s",
-		v.click[1], v.click[2], v.click[3], bt[1], bt[2], bt[3], cx, (mn[2] + mx[2]) * 0.5, cz, mx[1] - mn[1], mx[2] - mn[2], sv.x, sv.z,
-		math.sqrt((cx - v.click[1]) ^ 2 + (cz - v.click[3]) ^ 2), v.measured and "" or " (no probe)")
+	sv.dbg = string.format("volcano: click %.1f %.1f %.1f | cone body %.1f %.1f %.1f | cone bounds centre %.1f %.1f %.1f | off %.2f m | cone height %.1f m (want %.1f) | layer want/actual y: %s%s",
+		v.click[1], v.click[2], v.click[3], bt[1], bt[2], bt[3], cx, (mn[2] + mx[2]) * 0.5, cz,
+		math.sqrt((cx - v.click[1]) ^ 2 + (cz - v.click[3]) ^ 2), mx[2] - mn[2], CONE_H * v.vs, table.concat(per, ", "),
+		v.measured and "" or " | probe: no valid bounds, fallback")
 end
 
 function server.update(dt)
@@ -248,11 +281,16 @@ function server.update(dt)
 	local sv = shared.v
 	sv.t = v.t
 	if v.phase == "grow" then
-		local want = math.min(LAYERS, math.floor(v.t / LAYER_TIME) + 1)
-		if #v.layers < want then server.spawnLayer(v, #v.layers + 1) end
+		if server.readProbe(v) then
+			v.growT = (v.growT or 0) + dt
+			local want = math.min(LAYERS, math.floor(v.growT / LAYER_TIME) + 1)
+			if #v.layers < want then server.spawnLayer(v, #v.layers + 1) end
+		end
+		server.anchorFromCone(v)
 		sv.k = 0.1
-		if v.t >= GROW_TIME + 0.2 then server.setPhase(v, "rumble", v.rumbleT) end
+		if (v.growT or 0) >= GROW_TIME + 0.2 then server.setPhase(v, "rumble", v.rumbleT) end
 	elseif v.phase == "rumble" then
+		if v.t < 1 then server.anchorFromCone(v) end
 		sv.k = 0.2 + 0.4 * smooth(0, v.rumbleT, v.t)
 		server.tremors(v, dt, sv.k * 0.6)
 		server.setGlow(v, dt, 0.3 + 0.7 * sv.k)

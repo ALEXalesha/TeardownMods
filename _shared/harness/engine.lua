@@ -594,7 +594,11 @@ A.SetBodyTransform = function(h, t)
 	b.pos = A.VecCopy(t.pos); b.rot = A.QuatCopy(t.rot)
 end
 A.GetBodyMass = function(h) local b = B(h, "GetBodyMass"); if not b or not b.dynamic then return 0 end return b.mass end
-A.IsBodyDynamic = function(h) local b = B(h, "IsBodyDynamic"); return b ~= nil and b.dynamic end
+A.IsBodyDynamic = function(h)
+	local b = B(h, "IsBodyDynamic")
+	if b and H.spawnModel and H.spawnModel.dynamicDelay and b.spawnFrame and H.frame - b.spawnFrame < H.spawnModel.dynamicDelay then return false end
+	return b ~= nil and b.dynamic
+end
 A.SetBodyDynamic = function(h, d) local b = B(h, "SetBodyDynamic"); if b then b.dynamic = d end end
 A.SetBodyVelocity = function(h, v)
 	local b = B(h, "SetBodyVelocity")
@@ -616,7 +620,14 @@ A.ApplyBodyImpulse = function(h, pos, imp)
 	local s = A.VecLength(b.vel)
 	if s > 500 then err("body speed exploded: " .. s) end
 end
-A.GetBodyShapes = function(h) local b = B(h, "GetBodyShapes"); if not b then return {} end local o = {} for i, s in ipairs(b.shapes) do if H.shapes[s].valid then o[#o + 1] = s end end return o end
+A.GetBodyShapes = function(h)
+	local b = B(h, "GetBodyShapes")
+	if not b then return {} end
+	if H.spawnModel and H.spawnModel.shapesDelay and b.spawnFrame and H.frame - b.spawnFrame < H.spawnModel.shapesDelay then return {} end
+	local o = {}
+	for i, s in ipairs(b.shapes) do if H.shapes[s].valid then o[#o + 1] = s end end
+	return o
+end
 H.vehicleOf = {}     -- body -> vehicle handle (scenario sets it)
 H.vehicles = {}      -- vehicle handle -> {body=main body, bodies={...}}
 A.GetBodyVehicle = function(h) return H.vehicleOf[h] or 0 end
@@ -659,8 +670,10 @@ function H.shapeWorldAabb(s)
 	local sz = s.size
 	local wt = A.TransformToParentTransform(A.Transform(b.pos, b.rot), s.local_)
 	local mn, mx = V(1e9, 1e9, 1e9), V(-1e9, -1e9, -1e9)
+	local lo, hi = { 0, 0, 0 }, { sz[1], sz[2], sz[3] }
+	if H.spawnModel and H.spawnModel.contentBounds and s.cmin then lo, hi = s.cmin, s.cmax end
 	for i = 0, 7 do
-		local c = V((i % 2) * sz[1] * vs, (math.floor(i / 2) % 2) * sz[2] * vs, math.floor(i / 4) * sz[3] * vs)
+		local c = V(((i % 2 == 0) and lo[1] or hi[1]) * vs, ((math.floor(i / 2) % 2 == 0) and lo[2] or hi[2]) * vs, ((math.floor(i / 4) == 0) and lo[3] or hi[3]) * vs)
 		local w = A.TransformToParentPoint(wt, c)
 		for k = 1, 3 do mn[k] = math.min(mn[k], w[k]) mx[k] = math.max(mx[k], w[k]) end
 	end
@@ -669,6 +682,8 @@ end
 A.GetShapeBounds = function(h)
 	local s = S(h, "GetShapeBounds"); if not s then return V(), V() end
 	for _, bx in ipairs(H.boxes) do if bx.shape == h then return A.VecCopy(bx.min), A.VecCopy(bx.max) end end
+	-- strict model: a shape spawned this frame has no valid bounds yet
+	if H.spawnModel and H.spawnModel.boundsDelay and s.spawnFrame and H.frame - s.spawnFrame < H.spawnModel.boundsDelay then return V(0, 0, 0), V(0, 0, 0) end
 	if s.size and H.bodies[s.body] then return H.shapeWorldAabb(s) end
 	return bodyAabb(H.bodies[s.body])
 end
@@ -858,6 +873,7 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			local dyn = parseAttr(attrs, "dynamic")
 			local bt = A.TransformToParentTransform(transform, H.attrTransform(attrs))
 			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
+			H.bodies[cur].spawnFrame = H.frame
 			out[#out + 1] = cur
 			local btags = parseAttr(attrs, "tags")
 			if btags and not (H.spawnModel and H.spawnModel.noBodyTags) then
@@ -870,9 +886,11 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 		elseif tag == "vox" or tag == "voxbox" then
 			local sizes = nil
 			local scale = tonumber(parseAttr(attrs, "scale") or "1") or 1
+			local contents = nil
 			if tag == "vox" then
 				local f = parseAttr(attrs, "file")
 				if f and checkFile(f, "Spawn vox") and H.voxSizes then sizes = H.voxSizes(resolvePath(f)) end
+				if f and H.voxContent then contents = H.voxContent(resolvePath(f)) end
 			else
 				local sz = parseAttr(attrs, "size")
 				if sz then
@@ -911,7 +929,15 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 					-- what the in-game screenshot of the first catapult shows: the vox is centred on its pos
 					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, -size[2] * vs * 0.5, -size[3] * vs * 0.5)))
 				end
-				H.shapes[sh] = { handle = sh, body = cur, local_ = local_, material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = vs }
+				H.shapes[sh] = { handle = sh, body = cur, local_ = local_, material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = vs, spawnFrame = H.frame }
+				if contents and contents[k] then
+					local c = contents[k]
+					local cmin, cmax = { c[1], c[2], c[3] }, { c[4] + 1, c[5] + 1, c[6] + 1 }
+					if H.spawnModel and H.spawnModel.axes == "mv" then
+						cmin, cmax = { cmin[1], cmin[3], cmin[2] }, { cmax[1], cmax[3], cmax[2] }
+					end
+					H.shapes[sh].cmin, H.shapes[sh].cmax = cmin, cmax
+				end
 				if H.spawnModel and (H.spawnModel.latency or 0) > 0 then
 					-- right after Spawn the engine reports an identity shape transform until the next tick
 					H.shapes[sh].realLocal = local_

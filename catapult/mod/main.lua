@@ -74,24 +74,43 @@ local MODELS = {
 -- half underground, axle floating). Instead of assuming, a small probe is spawned for one tick
 -- and its world bounds are read at once (the game's own spawn menu reads bounds in the spawn
 -- tick too): that gives the pivot fraction per axis and which model axis points up.
-function server.calibrate(at)
+local function validBounds(mn, mx)
+	return mx[1] - mn[1] > 0.05 and mx[2] - mn[2] > 0.05 and mx[3] - mn[3] > 0.05
+end
+
+-- start a probe; server.readProbe reads it on the following ticks (a just-spawned shape may have
+-- no valid bounds yet in the real game)
+function server.startProbe(at)
+	server.probe = { at = at, tries = 0,
+		ents = Spawn("<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>", Transform(at), true) }
+end
+
+-- returns the calibration once it is known: measured, or after 20 ticks the centre-pivot
+-- fallback (what the first in-game screenshot showed)
+function server.readProbe()
 	if server.calib then return server.calib end
+	local pr = server.probe
+	if not pr then return nil end
+	pr.tries = pr.tries + 1
 	local vs = 0.1 * SCALE
-	local ents = Spawn("<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>", Transform(at), true)
-	local calib = { f = Vec(0.5, 0.5, 0.5), zUp = true, measured = false }
-	for i = 1, #ents do
-		if GetEntityType(ents[i]) == "shape" then
-			local mn, mx = GetShapeBounds(ents[i])
-			local e = VecSub(mx, mn)
-			if e[1] > 0.01 and e[2] > 0.01 and e[3] > 0.01 then
-				calib.zUp = math.abs(e[2] - 6 * vs) < math.abs(e[2] - 4 * vs)
-				calib.f = Vec((at[1] - mn[1]) / e[1], (at[2] - mn[2]) / e[2], (at[3] - mn[3]) / e[3])
-				calib.measured = true
+	local calib = nil
+	for i = 1, #pr.ents do
+		if GetEntityType(pr.ents[i]) == "shape" then
+			local mn, mx = GetShapeBounds(pr.ents[i])
+			if validBounds(mn, mx) then
+				local e = VecSub(mx, mn)
+				local at = pr.at
+				calib = { f = Vec((at[1] - mn[1]) / e[1], (at[2] - mn[2]) / e[2], (at[3] - mn[3]) / e[3]),
+					zUp = math.abs(e[2] - 6 * vs) < math.abs(e[2] - 4 * vs), measured = true }
 			end
 		end
 	end
-	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
-	server.calib = calib
+	if not calib and pr.tries >= 20 then calib = { f = Vec(0.5, 0.5, 0.5), zUp = true, measured = false } end
+	if calib then
+		for i = 1, #pr.ents do if GetEntityType(pr.ents[i]) == "body" then Delete(pr.ents[i]) end end
+		server.probe = nil
+		server.calib = calib
+	end
 	return calib
 end
 
@@ -151,7 +170,7 @@ function server.init()
 	server.protect = {}           -- launched players: [p] = { t, landed }
 	server.impacts = {}
 	server.nextId = 1
-	shared.cp = { list = {}, fireN = 0, fx = 0, fy = 0, fz = 0, relN = 0, impN = 0, ix = 0, iy = 0, iz = 0, isp = 0, msg = "", mn = 0, flying = {} }
+	shared.cp = { reason = "", list = {}, fireN = 0, fx = 0, fy = 0, fz = 0, relN = 0, impN = 0, ix = 0, iy = 0, iz = 0, isp = 0, msg = "", mn = 0, flying = {} }
 end
 
 local function message(kind)
@@ -239,8 +258,16 @@ function server.tick(dt)
 	end
 end
 
+-- LMB: find the ground, then (over the next ticks) measure the pivot and assemble. Every refusal
+-- is shown in the debug line (shared.cp.reason).
+local function refuse(reason, kind)
+	shared.cp.reason = reason
+	message(kind or "aim")
+end
+
 function server.place(p)
-	if #server.cats >= MAX_CATAPULTS then message("full") return end
+	if server.pending then return end
+	if #server.cats >= MAX_CATAPULTS then refuse("4 catapults already stand", "full") return end
 	local eye = GetPlayerEyeTransform(p)
 	local fwd = TransformToParentVec(eye, Vec(0, 0, -1))
 	local flat = Vec(fwd[1], 0, fwd[3])
@@ -251,27 +278,47 @@ function server.place(p)
 	QueryRejectPlayer(p)
 	QueryRequire("physical static")
 	local hit, dist = QueryRaycast(probe, Vec(0, -1, 0), 60)
-	if not hit then message("aim") return end
-	local g = VecAdd(probe, Vec(0, -dist, 0))
+	local g
+	if hit then
+		g = VecAdd(probe, Vec(0, -dist, 0))
+	else
+		-- fallback: 14 m ahead at the height of the ground under the player
+		QueryRejectPlayer(p)
+		QueryRequire("physical")
+		local h2, d2 = QueryRaycast(VecAdd(pp, Vec(0, 1, 0)), Vec(0, -1, 0), 5)
+		if not h2 then refuse("refused: no ground 14 m ahead (ray from 20 m up, 60 m long) and none under you") return end
+		g = Vec(probe[1], pp[2] + 1 - d2, probe[3])
+	end
 	local yaw = math.deg(math.atan2(-flat[1], -flat[3]))
-	local calib = server.calibrate(VecAdd(g, Vec(0, 60, 0)))
-	local ents = Spawn(prefab(calib), Transform(g, QuatEuler(0, yaw, 0)), true)
-	local c = { id = server.nextId, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, yaw = yaw, base = g,
-		power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0, held = {}, heldPlayers = {}, sign = 1 }
-	server.nextId = server.nextId + 1
-	-- the arm is the dynamic body, the frame the static one (tags are only a second opinion)
-	for i = 1, #ents do
-		local e = ents[i]
-		local ty = GetEntityType(e)
-		if ty == "body" then
-			if IsBodyDynamic(e) or HasTag(e, "catapult_arm") then
-				if c.arm == 0 then c.arm = e end
-			elseif c.frame == 0 then
-				c.frame = e
-			end
-		elseif ty == "joint" and c.joint == 0 then
-			c.joint = e
-		end
+	server.pending = { stage = "probe", g = g, yaw = yaw, tries = 0 }
+	if not server.calib and not server.probe then server.startProbe(VecAdd(g, Vec(0, 60, 0))) end
+	shared.cp.reason = "placing: measuring the vox pivot"
+end
+
+-- the pending placement, one step per tick
+function server.stepPending()
+	local pd = server.pending
+	if not pd then return end
+	pd.tries = pd.tries + 1
+	if pd.stage == "probe" then
+		local calib = server.readProbe()
+		if not calib then shared.cp.reason = "placing: waiting for probe bounds (tick " .. pd.tries .. ")" return end
+		pd.calib = calib
+		pd.ents = Spawn(prefab(calib), Transform(pd.g, QuatEuler(0, pd.yaw, 0)), true)
+		pd.stage = "assemble"
+		pd.tries = 0
+		shared.cp.reason = "placing: assembling"
+		return
+	end
+	-- assemble: find frame, arm, hinge, axle and bucket among what Spawn returned
+	local c = { id = 0, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, yaw = pd.yaw, base = pd.g,
+		power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0, held = {}, heldPlayers = {}, sign = 1, calib = pd.calib }
+	local bodies, shapes = {}, {}
+	for i = 1, #pd.ents do
+		local ty = GetEntityType(pd.ents[i])
+		if ty == "body" then bodies[#bodies + 1] = pd.ents[i]
+		elseif ty == "shape" then shapes[#shapes + 1] = pd.ents[i]
+		elseif ty == "joint" and c.joint == 0 then c.joint = pd.ents[i] end
 	end
 	local function dims(sh)
 		local x, y, z = GetShapeSize(sh)
@@ -279,16 +326,36 @@ function server.place(p)
 		table.sort(t)
 		return t[1] .. "x" .. t[2] .. "x" .. t[3]
 	end
-	if c.frame ~= 0 then for _, sh in ipairs(GetBodyShapes(c.frame)) do if dims(sh) == "4x4x26" then c.axle = sh end end end
-	if c.arm ~= 0 then for _, sh in ipairs(GetBodyShapes(c.arm)) do if dims(sh) == "5x9x9" then c.bucket = sh end end end
-	if c.frame == 0 or c.arm == 0 or c.axle == 0 or c.bucket == 0 then
+	local axleBody, armBody = 0, 0
+	for _, sh in ipairs(shapes) do
+		local d = dims(sh)
+		if d == "4x4x26" then c.axle = sh axleBody = GetShapeBody(sh) end
+		if d == "5x9x9" then c.bucket = sh armBody = GetShapeBody(sh) end
+	end
+	-- the arm is the body holding the bucket (or the dynamic / tagged one), the frame the other one
+	for _, b in ipairs(bodies) do
+		if b == armBody or (armBody == 0 and (IsBodyDynamic(b) or HasTag(b, "catapult_arm"))) then c.arm = b
+		elseif b == axleBody or c.frame == 0 then c.frame = b end
+	end
+	if c.frame ~= 0 and c.frame == c.arm then c.frame = 0 end
+	local missing = {}
+	if c.frame == 0 then missing[#missing + 1] = "frame" end
+	if c.arm == 0 then missing[#missing + 1] = "arm" end
+	if c.axle == 0 then missing[#missing + 1] = "axle" end
+	if c.bucket == 0 then missing[#missing + 1] = "bucket" end
+	if #missing > 0 then
+		if pd.tries < 30 then shared.cp.reason = "placing: waiting for " .. table.concat(missing, ", ") .. " (tick " .. pd.tries .. ")" return end
 		-- never leave half a catapult behind that nothing can remove
-		for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
-		message("aim")
+		for i = 1, #pd.ents do if GetEntityType(pd.ents[i]) == "body" then Delete(pd.ents[i]) end end
+		server.pending = nil
+		refuse("refused: " .. table.concat(missing, ", ") .. " not found among " .. #bodies .. " bodies / " .. #shapes .. " shapes after 30 ticks")
 		return
 	end
-	c.calib = calib
+	c.id = server.nextId
+	server.nextId = server.nextId + 1
 	server.cats[#server.cats + 1] = c
+	server.pending = nil
+	shared.cp.reason = ""
 	server.sync()
 	message("placed")
 end
@@ -444,13 +511,16 @@ end
 
 function server.update(dt)
 	local s = readSettings()
+	server.stepPending()
 	for i = #server.cats, 1, -1 do
 		local c = server.cats[i]
 		if not IsHandleValid(c.frame) or not IsHandleValid(c.arm) or (c.joint ~= 0 and IsJointBroken(c.joint)) then
 			if not c.broken then c.broken = true c.state = "broken" server.sync() end
 		elseif c.state == "settle" then
 			c.t = c.t + dt
-			if c.t > 0.05 then
+			local amn, amx = GetShapeBounds(c.axle)
+			local bmn, bmx = GetShapeBounds(c.bucket)
+			if c.t > 0.05 and validBounds(amn, amx) and validBounds(bmn, bmx) then
 				server.debugInfo(c)
 				c.psiRest = server.psi(c)
 				c.armLen = VecLength(VecSub(server.bucketCentre(c), server.pivot(c)))
@@ -821,14 +891,17 @@ end
 function client.draw(dt)
 	if GetPlayerTool() ~= TOOL then return end
 	local sel = client.sel
-	if readSettings().debug and sel and sel.dbg and sel.dbg ~= "" then
+	if readSettings().debug then
+		local line = (sel and sel.dbg and sel.dbg ~= "") and sel.dbg or "catapult: none selected"
+		local reason = shared.cp.reason or ""
+		if reason ~= "" then line = line .. " | " .. reason end
 		UiPush()
 			UiTranslate(20, UiHeight() - 24)
 			UiAlign("left middle")
 			UiFont("regular.ttf", 16)
 			UiTextShadow(0, 0, 0, 0.8, 1)
 			UiColor(1, 1, 0.6, 0.95)
-			UiText(sel.dbg)
+			UiText(line)
 		UiPop()
 	end
 	if GetBool("game.ui.hidemods") or not GetPlayerCanUseTool() then return end

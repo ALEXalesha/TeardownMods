@@ -36,7 +36,9 @@ Limits: at most 4 catapults, 24 mod-spawned ammo bodies (the oldest go first), 3
 | Arc preview | on | `savegame.mod.arc` |
 | Debug line (for testing) | on | `savegame.mod.debug` |
 
-The debug line (bottom left, while the tool is in hand and a catapult is selected) shows the measured assembly: `catapult: pivot fx fy fz | ground | frame bottom | axle (want +9.6) | bucket floor | hinge attached/BROKEN | arm m/s`, all heights relative to the frame's base.
+The debug line (bottom left, while the tool is in hand and a catapult is selected) shows the measured assembly: `catapult: pivot fx fy fz | ground | frame bottom | axle (want +9.6) | bucket floor | hinge attached/BROKEN | arm m/s`, all heights relative to the frame's base. While a catapult is being placed, and after a refused placement, the line also shows the stage or the reason: `placing: waiting for probe bounds (tick n)`, `placing: waiting for frame, arm ... (tick n)`, or `refused: ... not found among N bodies / M shapes after 30 ticks`, `refused: no ground ...`.
+
+Second in-game report ("no surface is accepted"): the placement checked everything in the spawn tick and gave up at once. Now it is spread over ticks: the pivot probe is read for up to 20 ticks (then the centre-pivot fallback), the parts are found among the handles Spawn returned (shape -> body with `GetShapeBody`, not `GetBodyShapes`) for up to 30 ticks, and only then is anything refused - with the reason on screen. `tests/strict_law.lua` models a stricter game (zero bounds, no body shapes and no dynamic flag in the spawn tick, filled-voxel bounds, corner pivot).
 
 ## Install, build, test
 

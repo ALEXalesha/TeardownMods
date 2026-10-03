@@ -56,33 +56,86 @@ function readSettings()
 		damage = clamp(getF("damage", 1), 0.25, 2),
 		falldamage = getB("falldamage", false),
 		arc = getB("arc", true),
+		debug = getB("debug", true),
 	}
 end
 
 function launchSpeed(power) return V_MIN + (V_MAX - V_MIN) * clamp(power, 0, 1) end
 
--- the prefab: a static frame with the axle, and the arm (hub with the hinge, beam, bucket,
--- counterweight) in its rest pose. Positions assume the game's vox pivot (centre of the bottom
--- face); the geometry used for aiming is measured from the real shapes afterwards.
-local function prefab()
+-- Model sizes in MagicaVoxel order (x, y, z-up); turned into the game's shape axes by the
+-- calibration below.
+local MODELS = {
+	frame = { 26, 38, 32 }, axle = { 26, 4, 4 }, hub = { 4, 4, 4 }, beam = { 2, 48, 2 },
+	bucket = { 9, 9, 5 }, weight = { 8, 8, 8 }, probe = { 2, 4, 6 },
+}
+
+-- Where does the game put a spawned vox relative to its pos? The first catapult assumed the
+-- centre of the bottom face; the in-game screenshot showed the model centred on its pos (frame
+-- half underground, axle floating). Instead of assuming, a small probe is spawned for one tick
+-- and its world bounds are read at once (the game's own spawn menu reads bounds in the spawn
+-- tick too): that gives the pivot fraction per axis and which model axis points up.
+function server.calibrate(at)
+	if server.calib then return server.calib end
+	local vs = 0.1 * SCALE
+	local ents = Spawn("<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>", Transform(at), true)
+	local calib = { f = Vec(0.5, 0.5, 0.5), zUp = true, measured = false }
+	for i = 1, #ents do
+		if GetEntityType(ents[i]) == "shape" then
+			local mn, mx = GetShapeBounds(ents[i])
+			local e = VecSub(mx, mn)
+			if e[1] > 0.01 and e[2] > 0.01 and e[3] > 0.01 then
+				calib.zUp = math.abs(e[2] - 6 * vs) < math.abs(e[2] - 4 * vs)
+				calib.f = Vec((at[1] - mn[1]) / e[1], (at[2] - mn[2]) / e[2], (at[3] - mn[3]) / e[3])
+				calib.measured = true
+			end
+		end
+	end
+	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
+	server.calib = calib
+	return calib
+end
+
+-- the game's shape-axis size (in metres) of a model
+local function partSize(calib, name)
+	local m = MODELS[name]
+	local vs = 0.1 * SCALE
+	if calib.zUp then return Vec(m[1] * vs, m[3] * vs, m[2] * vs) end
+	return Vec(m[1] * vs, m[2] * vs, m[3] * vs)
+end
+
+-- pos attribute that puts the part's centre at `centre` (with rotation `rot`)
+local function partPos(calib, name, centre, rot)
+	local sz = partSize(calib, name)
+	local pc = Vec((0.5 - calib.f[1]) * sz[1], (0.5 - calib.f[2]) * sz[2], (0.5 - calib.f[3]) * sz[3])
+	return VecSub(centre, QuatRotateVec(rot, pc)), pc
+end
+
+-- the designed layout (catapult space, metres): frame on the ground, axle on its bearings, the arm
+-- in its rest pose; positions are made from the measured pivot convention
+local function prefab(calib)
 	local a = math.rad(REST)
 	local u = Vec(0, -math.sin(a), math.cos(a))            -- along the arm towards the bucket (back, down)
 	local P = Vec(0, AXY, 0)
-	local beamC = VecAdd(P, VecScale(u, (L1 - L2) / 2))
-	local beamPos = VecSub(beamC, Vec(0, 0.3 * math.cos(a), 0.3 * math.sin(a)))
+	local id = Quat()
+	local tilt = QuatEuler(REST, 0, 0)
+	local framePos = partPos(calib, "frame", Vec(0, MODELS.frame[3] * 0.1 * SCALE * 0.5, 0), id)
+	local axlePos = partPos(calib, "axle", P, id)
+	local hubPos, hubPc = partPos(calib, "hub", P, id)
+	local beamPos = partPos(calib, "beam", VecAdd(P, VecScale(u, (L1 - L2) / 2)), tilt)
 	local T = VecAdd(P, VecScale(u, L1))
-	local W = VecSub(P, VecScale(u, L2))
-	local weightPos = VecSub(W, Vec(0, 1.2 * math.cos(a), 1.2 * math.sin(a)))
-	return "<body dynamic='false' tags='catapult interact=Fire'>" ..
-		"<vox file='MOD/vox/frame.vox' scale='" .. SCALE .. "' pos='0 0 0'/>" ..
-		"<vox file='MOD/vox/axle.vox' scale='" .. SCALE .. "' pos='0 " .. (AXY - 0.6) .. " 0'/>" ..
+	local bucketPos = partPos(calib, "bucket", VecAdd(T, Vec(0, 0.3, 0)), id)
+	local weightPos = partPos(calib, "weight", VecSub(P, VecScale(u, L2)), tilt)
+	local tag = "tags='catapult_part'"
+	return "<body dynamic='false' tags='catapult catapult_part interact=Fire'>" ..
+		"<vox file='MOD/vox/frame.vox' scale='" .. SCALE .. "' pos='" .. fmt3(framePos) .. "' " .. tag .. "/>" ..
+		"<vox file='MOD/vox/axle.vox' scale='" .. SCALE .. "' pos='" .. fmt3(axlePos) .. "' " .. tag .. "/>" ..
 		"</body>" ..
-		"<body dynamic='true' tags='catapult_arm interact=Fire'>" ..
-		"<vox file='MOD/vox/hub.vox' scale='" .. SCALE .. "' pos='0 " .. (AXY - 0.6) .. " 0'>" ..
-		"<joint pos='0 0.6 0' rot='0 90 0' type='hinge' size='0.5' rotstrength='0' rotspring='0'/></vox>" ..
-		"<vox file='MOD/vox/beam.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamPos) .. "' rot='" .. REST .. " 0 0'/>" ..
-		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(VecAdd(T, Vec(0, -0.45, 0))) .. "'/>" ..
-		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0'/>" ..
+		"<body dynamic='true' tags='catapult_arm catapult_part interact=Fire'>" ..
+		"<vox file='MOD/vox/hub.vox' scale='" .. SCALE .. "' pos='" .. fmt3(hubPos) .. "' " .. tag .. ">" ..
+		"<joint pos='" .. fmt3(hubPc) .. "' rot='0 90 0' type='hinge' size='0.5' rotstrength='0' rotspring='0'/></vox>" ..
+		"<vox file='MOD/vox/beam.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
+		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(bucketPos) .. "' " .. tag .. "/>" ..
+		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
 		"</body>"
 end
 
@@ -123,19 +176,22 @@ local function nearestCat(pos, maxd)
 	return best
 end
 
--- measured geometry
-local function shapeCentre(shape, yFrac)
-	local sx, sy, sz, vs = GetShapeSize(shape)
-	return TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * vs * 0.5, sy * vs * (yFrac or 0.5), sz * vs * 0.5))
+-- measured geometry, from world bounds like the game's own spawn menu (no assumption about how
+-- a model's axes map to the shape)
+local function boundsCentre(shape)
+	local mn, mx = GetShapeBounds(shape)
+	return VecLerp(mn, mx, 0.5), mn, mx
 end
-function server.pivot(c) return shapeCentre(c.axle, 0.5) end
+function server.pivot(c) return (boundsCentre(c.axle)) end
+function server.bucketCentre(c) return (boundsCentre(c.bucket)) end
+-- the inside floor of the bucket (the bucket is upright whenever this is used: at rest)
 function server.bucketFloor(c)
-	local sx, sy, sz, vs = GetShapeSize(c.bucket)
-	return TransformToParentPoint(GetShapeWorldTransform(c.bucket), Vec(sx * vs * 0.5, vs, sz * vs * 0.5))
+	local ctr, mn = boundsCentre(c.bucket)
+	return Vec(ctr[1], mn[2] + 0.1 * SCALE, ctr[3])
 end
 function server.back(c) return QuatRotateVec(GetBodyTransform(c.frame).rot, Vec(0, 0, 1)) end
 function server.psi(c)
-	local d = VecSub(server.bucketFloor(c), server.pivot(c))
+	local d = VecSub(server.bucketCentre(c), server.pivot(c))
 	return math.deg(math.atan2(d[2], VecDot(d, server.back(c))))
 end
 
@@ -144,7 +200,7 @@ function server.sync()
 	for i = 1, #server.cats do
 		local c = server.cats[i]
 		list[i] = { id = c.id, frame = c.frame, arm = c.arm, axle = c.axle, bucket = c.bucket, power = c.power, angle = c.angle,
-			ammo = c.ammo, state = c.state, armLen = c.armLen or L1, psiRest = c.psiRest or -REST, broken = c.broken }
+			ammo = c.ammo, state = c.state, armLen = c.armLen or L1, psiRest = c.psiRest or -REST, broken = c.broken, dbg = c.dbg or "" }
 	end
 	shared.cp.list = list
 	local fl = {}
@@ -198,28 +254,40 @@ function server.place(p)
 	if not hit then message("aim") return end
 	local g = VecAdd(probe, Vec(0, -dist, 0))
 	local yaw = math.deg(math.atan2(-flat[1], -flat[3]))
-	local ents = Spawn(prefab(), Transform(g, QuatEuler(0, yaw, 0)), true)
+	local calib = server.calibrate(VecAdd(g, Vec(0, 60, 0)))
+	local ents = Spawn(prefab(calib), Transform(g, QuatEuler(0, yaw, 0)), true)
 	local c = { id = server.nextId, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, yaw = yaw, base = g,
 		power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0, held = {}, heldPlayers = {}, sign = 1 }
 	server.nextId = server.nextId + 1
+	-- the arm is the dynamic body, the frame the static one (tags are only a second opinion)
 	for i = 1, #ents do
 		local e = ents[i]
 		local ty = GetEntityType(e)
 		if ty == "body" then
-			if HasTag(e, "catapult_arm") then c.arm = e elseif c.frame == 0 then c.frame = e end
+			if IsBodyDynamic(e) or HasTag(e, "catapult_arm") then
+				if c.arm == 0 then c.arm = e end
+			elseif c.frame == 0 then
+				c.frame = e
+			end
 		elseif ty == "joint" and c.joint == 0 then
 			c.joint = e
 		end
 	end
-	if c.frame == 0 or c.arm == 0 then message("aim") return end
-	for _, sh in ipairs(GetBodyShapes(c.frame)) do
-		local sx, sy, sz = GetShapeSize(sh)
-		if sx == 26 and sy == 4 and sz == 4 then c.axle = sh end
+	local function dims(sh)
+		local x, y, z = GetShapeSize(sh)
+		local t = { x, y, z }
+		table.sort(t)
+		return t[1] .. "x" .. t[2] .. "x" .. t[3]
 	end
-	for _, sh in ipairs(GetBodyShapes(c.arm)) do
-		local sx, sy, sz = GetShapeSize(sh)
-		if sx == 9 and sy == 5 and sz == 9 then c.bucket = sh end
+	if c.frame ~= 0 then for _, sh in ipairs(GetBodyShapes(c.frame)) do if dims(sh) == "4x4x26" then c.axle = sh end end end
+	if c.arm ~= 0 then for _, sh in ipairs(GetBodyShapes(c.arm)) do if dims(sh) == "5x9x9" then c.bucket = sh end end end
+	if c.frame == 0 or c.arm == 0 or c.axle == 0 or c.bucket == 0 then
+		-- never leave half a catapult behind that nothing can remove
+		for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
+		message("aim")
+		return
 	end
+	c.calib = calib
 	server.cats[#server.cats + 1] = c
 	server.sync()
 	message("placed")
@@ -274,27 +342,27 @@ function server.load(c, kind)
 	local ents
 	if name == "boulder" then
 		trimAmmo(1)
-		ents = Spawn("<body dynamic='true'><vox file='MOD/vox/boulder.vox' scale='3'/></body>", Transform(VecAdd(floor, Vec(0, 0.05, 0)), rot))
+		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.8, 0)), rot))
 	elseif name == "barrel" then
 		trimAmmo(1)
-		ents = Spawn("<body dynamic='true' tags='catapult_barrel'><vox file='MOD/vox/barrel.vox' scale='3'/></body>", Transform(VecAdd(floor, Vec(0, 0.05, 0)), rot))
+		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0)), rot))
 	elseif name == "crates" then
 		trimAmmo(6)
 		local xml = ""
 		local slots = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.95, -0.5 }, { 0, 0.95, 0.5 } }
 		for i = 1, #slots do
-			xml = xml .. "<body dynamic='true' pos='" .. slots[i][1] .. " " .. (0.05 + slots[i][2]) .. " " .. slots[i][3] .. "'><vox file='MOD/vox/crate.vox' scale='3'/></body>"
+			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. slots[i][1] .. " " .. (0.05 + slots[i][2] + server.calib.f[2] * 0.9) .. " " .. slots[i][3] .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
 		end
 		ents = Spawn(xml, Transform(floor, rot))
 	elseif name == "car" then
 		trimAmmo(1)
 		-- the game's own small car if its prefab can be spawned, else the mod's car body
-		local t = Transform(VecAdd(floor, Vec(0, 0.4, 0)), QuatRotateQuat(rot, QuatEuler(0, 90, 0)))
+		local t = Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0)), QuatRotateQuat(rot, QuatEuler(0, 90, 0)))
 		ents = Spawn("BUILT-IN/prefab/vehicle/land/generic_small_blue.xml", t)
 		local any = false
-		for i = 1, #(ents or {}) do if GetEntityType(ents[i]) == "body" then any = true end end
+		for i = 1, #(ents or {}) do if GetEntityType(ents[i]) == "body" then any = true SetTag(ents[i], "catapult_ammo") end end
 		if not any then
-			ents = Spawn("<body dynamic='true'><vox file='MOD/vox/hulk.vox' scale='3'/></body>", t)
+			ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/hulk.vox' scale='3' tags='catapult_ammo'/></body>", t)
 		end
 	end
 	-- the loaded ammo is held gently where it lies in the bucket while the catapult stands
@@ -383,8 +451,9 @@ function server.update(dt)
 		elseif c.state == "settle" then
 			c.t = c.t + dt
 			if c.t > 0.05 then
+				server.debugInfo(c)
 				c.psiRest = server.psi(c)
-				c.armLen = VecLength(VecSub(server.bucketFloor(c), server.pivot(c)))
+				c.armLen = VecLength(VecSub(server.bucketCentre(c), server.pivot(c)))
 				c.state = "ready"
 				c.t = 0
 				server.load(c, c.ammo)
@@ -392,6 +461,8 @@ function server.update(dt)
 			end
 		elseif c.state == "ready" then
 			SetJointMotorTarget(c.joint, 0, 1.5)
+			c.dbgT = (c.dbgT or 0) - dt
+			if c.dbgT <= 0 then c.dbgT = 0.5 server.debugInfo(c) server.sync() end
 			local armT = GetBodyTransform(c.arm)
 			for j = 1, #(c.loadedBodies or {}) do
 				local h = c.loadedBodies[j]
@@ -487,6 +558,24 @@ function server.updateFlying(dt, s)
 	server.sync()
 end
 
+-- one line of measured numbers for in-game diagnosis
+function server.debugInfo(c)
+	local cal = c.calib or server.calib or { f = Vec(0, 0, 0), measured = false, zUp = true }
+	local fmn = Vec(0, 0, 0)
+	for _, sh in ipairs(GetBodyShapes(c.frame)) do
+		local mn = GetShapeBounds(sh)
+		fmn = mn
+		break
+	end
+	local base = GetBodyTransform(c.frame).pos
+	local ax = server.pivot(c)
+	local bk = server.bucketFloor(c)
+	local v = GetBodyVelocity(c.arm)
+	c.dbg = string.format("catapult: pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s",
+		cal.f[1], cal.f[2], cal.f[3], cal.measured and "" or " (default)", cal.zUp and "" or " y-up", base[2], fmn[2] - base[2], ax[2] - base[2], AXY,
+		bk[2] - base[2], (c.joint ~= 0 and not IsJointBroken(c.joint)) and "attached" or "BROKEN", VecLength(v))
+end
+
 -- client commands
 function server.cmd(p, id, what, value)
 	local c = catById(id)
@@ -515,7 +604,15 @@ function server.turn(c, deg)
 	end
 end
 
+-- R: everything this mod ever spawned goes, found by tag (also pieces broken off, catapults that
+-- were never registered, and parts tagged by the first version: catapult / catapult_arm)
 function server.clear()
+	for _, tag in ipairs({ "catapult_part", "catapult_ammo", "catapult", "catapult_arm", "catapult_barrel" }) do
+		local list = FindBodies(tag, true)
+		for i = 1, #list do if IsHandleValid(list[i]) then Delete(list[i]) end end
+		local shapes = FindShapes(tag, true)
+		for i = 1, #shapes do if IsHandleValid(shapes[i]) then Delete(shapes[i]) end end
+	end
 	for i = 1, #server.cats do
 		local c = server.cats[i]
 		if IsHandleValid(c.arm) then Delete(c.arm) end
@@ -723,6 +820,17 @@ end
 
 function client.draw(dt)
 	if GetPlayerTool() ~= TOOL then return end
+	local sel = client.sel
+	if readSettings().debug and sel and sel.dbg and sel.dbg ~= "" then
+		UiPush()
+			UiTranslate(20, UiHeight() - 24)
+			UiAlign("left middle")
+			UiFont("regular.ttf", 16)
+			UiTextShadow(0, 0, 0, 0.8, 1)
+			UiColor(1, 1, 0.6, 0.95)
+			UiText(sel.dbg)
+		UiPop()
+	end
 	if GetBool("game.ui.hidemods") or not GetPlayerCanUseTool() then return end
 	local c = client.sel
 	UiPush()

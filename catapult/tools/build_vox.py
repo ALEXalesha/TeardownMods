@@ -99,6 +99,32 @@ def frame() -> VoxFile:
     return vf
 
 
+def probe() -> VoxFile:
+    """2 x 4 x 6 voxels, spawned for one tick to measure where the game puts a vox relative to its pos."""
+    vf = VoxFile()
+    palette(vf)
+    m = Model("probe", (2, 4, 6))
+    for x in range(2):
+        for y in range(4):
+            for z in range(6):
+                m.set(x, y, z, 57)
+    vf.models = [m]
+    return vf
+
+
+def hub() -> VoxFile:
+    """A 4 x 4 x 4 iron block around the axle: a cube, so its centre is the same in any axis order."""
+    vf = VoxFile()
+    palette(vf)
+    m = Model("hub", (4, 4, 4))
+    for x in range(4):
+        for y in range(4):
+            for z in range(4):
+                m.set(x, y, z, IRON if (x + y + z) % 3 else IRON_LT)
+    vf.models = [m]
+    return vf
+
+
 def bar(name, filled) -> VoxFile:
     """26 x 4 x 4 model: the axle (filled) or the hub (only a small block in the middle)."""
     vf = VoxFile()
@@ -239,7 +265,7 @@ def mallet() -> VoxFile:
     return vf
 
 
-MODELS = {"frame.vox": frame, "axle.vox": lambda: bar("axle", True), "hub.vox": lambda: bar("hub", False), "beam.vox": beam,
+MODELS = {"frame.vox": frame, "axle.vox": lambda: bar("axle", True), "hub.vox": hub, "probe.vox": probe, "beam.vox": beam,
           "bucket.vox": bucket, "weight.vox": weight, "boulder.vox": boulder, "barrel.vox": barrel, "crate.vox": crate,
           "hulk.vox": hulk, "mallet.vox": mallet}
 

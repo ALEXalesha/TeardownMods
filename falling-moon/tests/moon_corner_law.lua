@@ -4,7 +4,7 @@
 local function V(x, y, z) return { x, y, z } end
 local function sh() return T.sharedOf() end
 local function srv() return T.env().server end
-H.spawnModel = { pivot = "corner", latency = 1 }
+H.spawnModel = { pivot = "corner" }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
 H.addStaticBox(V(-30, 0, -70), V(30, 10, -69), "masonry")

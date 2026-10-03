@@ -586,7 +586,13 @@ end
 H.B = B
 
 A.GetBodyTransform = function(h) local b = B(h, "GetBodyTransform"); if not b then return A.Transform() end return A.Transform(b.pos, b.rot) end
-A.SetBodyTransform = function(h, t) local b = B(h, "SetBodyTransform"); if b then b.pos = A.VecCopy(t.pos); b.rot = A.QuatCopy(t.rot) end end
+A.SetBodyTransform = function(h, t)
+	local b = B(h, "SetBodyTransform")
+	if not b then return end
+	-- optional failure model: static bodies cannot be moved after they are spawned
+	if H.spawnModel and H.spawnModel.staticFixed and not b.dynamic then return end
+	b.pos = A.VecCopy(t.pos); b.rot = A.QuatCopy(t.rot)
+end
 A.GetBodyMass = function(h) local b = B(h, "GetBodyMass"); if not b or not b.dynamic then return 0 end return b.mass end
 A.IsBodyDynamic = function(h) local b = B(h, "IsBodyDynamic"); return b ~= nil and b.dynamic end
 A.SetBodyDynamic = function(h, d) local b = B(h, "SetBodyDynamic"); if b then b.dynamic = d end end
@@ -625,17 +631,45 @@ A.DrawBodyOutline = function() end
 A.DrawBodyHighlight = function() end
 A.GetBodyClosestPoint = function(h, o) local b = B(h); if not b then return false, V(), V(), 0 end local bmin, bmax = bodyAabb(b); local cp = V(math.max(bmin[1], math.min(o[1], bmax[1])), math.max(bmin[2], math.min(o[2], bmax[2])), math.max(bmin[3], math.min(o[3], bmax[3]))); return true, cp, V(0, 1, 0), b.shapes[1] or 0 end
 A.GetWorldBody = function() return H.worldBody end
-A.FindBody = function() return 0 end
-A.FindBodies = function() return {} end
-A.FindShape = function() return 0 end
-A.FindShapes = function() return {} end
+A.FindBodies = function(tag, global)
+	local out = {}
+	for h, b in pairs(H.bodies) do
+		if b.valid ~= false and h ~= H.worldBody and (tag == nil or tag == "" or b.tags[tag] ~= nil) then out[#out + 1] = h end
+	end
+	table.sort(out)
+	return out
+end
+A.FindBody = function(tag, global) return A.FindBodies(tag, global)[1] or 0 end
+A.FindShapes = function(tag, global)
+	local out = {}
+	for h, sh in pairs(H.shapes) do
+		if sh.valid and (tag == nil or tag == "" or sh.tags[tag] ~= nil) then out[#out + 1] = h end
+	end
+	table.sort(out)
+	return out
+end
+A.FindShape = function(tag, global) return A.FindShapes(tag, global)[1] or 0 end
 A.GetShapeLocalTransform = function(h) local s = S(h, "GetShapeLocalTransform"); if not s then return A.Transform() end return A.TransformCopy(s.local_) end
 A.SetShapeLocalTransform = function(h, t) local s = S(h, "SetShapeLocalTransform"); if s then s.local_ = A.TransformCopy(t) end end
 A.GetShapeWorldTransform = function(h) local s = S(h, "GetShapeWorldTransform"); if not s then return A.Transform() end local b = H.bodies[s.body]; return A.TransformToParentTransform(A.Transform(b.pos, b.rot), s.local_) end
 A.GetShapeBody = function(h) local s = S(h, "GetShapeBody"); return s and s.body or 0 end
+function H.shapeWorldAabb(s)
+	local b = H.bodies[s.body]
+	local vs = s.voxelSize or 0.1
+	local sz = s.size
+	local wt = A.TransformToParentTransform(A.Transform(b.pos, b.rot), s.local_)
+	local mn, mx = V(1e9, 1e9, 1e9), V(-1e9, -1e9, -1e9)
+	for i = 0, 7 do
+		local c = V((i % 2) * sz[1] * vs, (math.floor(i / 2) % 2) * sz[2] * vs, math.floor(i / 4) * sz[3] * vs)
+		local w = A.TransformToParentPoint(wt, c)
+		for k = 1, 3 do mn[k] = math.min(mn[k], w[k]) mx[k] = math.max(mx[k], w[k]) end
+	end
+	return mn, mx
+end
 A.GetShapeBounds = function(h)
 	local s = S(h, "GetShapeBounds"); if not s then return V(), V() end
 	for _, bx in ipairs(H.boxes) do if bx.shape == h then return A.VecCopy(bx.min), A.VecCopy(bx.max) end end
+	if s.size and H.bodies[s.body] then return H.shapeWorldAabb(s) end
 	return bodyAabb(H.bodies[s.body])
 end
 A.SetShapeEmissiveScale = function(h, sc) local s = S(h, "SetShapeEmissiveScale"); if s then s.emissive = sc end end
@@ -826,7 +860,7 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
 			out[#out + 1] = cur
 			local btags = parseAttr(attrs, "tags")
-			if btags then
+			if btags and not (H.spawnModel and H.spawnModel.noBodyTags) then
 				for t in btags:gmatch("%S+") do
 					local k, v = t:match("([^=]+)=?(.*)")
 					H.bodies[cur].tags[k] = v
@@ -861,16 +895,28 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 				local attrT = H.attrTransform(attrs)
 				local local_ = attrT
 				local model = H.spawnModel
+				if model and model.axes == "mv" and size then
+					-- the shape keeps the model's own axes (height along its local z) and is stood up by
+					-- its transform; GetShapeSize then reports the model's x, y, z
+					size = { size[1], size[3], size[2] }
+					local half = model.pivot == "center" and V(-size[1] * vs * 0.5, -size[2] * vs * 0.5, -size[3] * vs * 0.5)
+						or (model.pivot == "bottomcenter" and V(-size[1] * vs * 0.5, -size[2] * vs * 0.5, 0) or V(0, 0, 0))
+					local_ = A.TransformToParentTransform(attrT, A.TransformToParentTransform(A.Transform(V(0, 0, 0), A.QuatEuler(-90, 0, 0)), A.Transform(half)))
+					attrT = local_
+					model = nil
+				end
 				if model and model.pivot == "bottomcenter" and size then
-					-- the game puts a vox shape's pivot at the centre of its bottom face
 					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, 0, -size[3] * vs * 0.5)))
+				elseif model and model.pivot == "center" and size then
+					-- what the in-game screenshot of the first catapult shows: the vox is centred on its pos
+					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, -size[2] * vs * 0.5, -size[3] * vs * 0.5)))
 				end
 				H.shapes[sh] = { handle = sh, body = cur, local_ = local_, material = "metal", tags = {}, emissive = 1, valid = true, layer = 1, mask = 255, size = size, voxelSize = vs }
-				if model and (model.latency or 0) > 0 then
+				if H.spawnModel and (H.spawnModel.latency or 0) > 0 then
 					-- right after Spawn the engine reports an identity shape transform until the next tick
 					H.shapes[sh].realLocal = local_
 					H.shapes[sh].local_ = A.Transform()
-					H.shapes[sh].revealFrame = H.frame + model.latency
+					H.shapes[sh].revealFrame = H.frame + H.spawnModel.latency
 					H.pendingShapes[#H.pendingShapes + 1] = sh
 				end
 				lastVox = { shape = sh, attrT = attrT, body = cur }
@@ -893,6 +939,38 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 				body = lastVox and lastVox.body or 0, localT = lastVox and A.TransformToParentTransform(lastVox.attrT, H.attrTransform(attrs)) or A.Transform(),
 				angle = 0, spawnedWith = out }
 			out[#out + 1] = j
+		end
+	end
+	if H.spawnModel and H.spawnModel.physics then
+		for _, e in ipairs(out) do
+			local jj = H.joints[e]
+			if jj and jj.body ~= 0 then
+				local b = H.bodies[jj.body]
+				local wt = A.TransformToParentTransform(A.Transform(b.pos, b.rot), jj.localT)
+				local inside = false
+				for _, e2 in ipairs(out) do
+					local s2 = H.shapes[e2]
+					if s2 and s2.body ~= jj.body and s2.size then
+						local mn, mx = H.shapeWorldAabb(s2)
+						if wt.pos[1] > mn[1] + 0.05 and wt.pos[1] < mx[1] - 0.05 and wt.pos[2] > mn[2] + 0.05 and wt.pos[2] < mx[2] - 0.05 and wt.pos[3] > mn[3] + 0.05 and wt.pos[3] < mx[3] - 0.05 then inside = true end
+					end
+				end
+				if not inside then jj.broken = true jj.unattached = true end
+			end
+		end
+		for _, e in ipairs(out) do
+			local b = H.bodies[e]
+			if b and b.dynamic then
+				local low = 1e9
+				for _, sh in ipairs(b.shapes) do
+					local s2 = H.shapes[sh]
+					if s2.size then local mn = H.shapeWorldAabb(s2) low = math.min(low, mn[2]) end
+				end
+				if low < -0.1 then
+					b.vel = V(math.random() * 30 - 15, 25, math.random() * 30 - 15)
+					b.flung = true
+				end
+			end
 		end
 	end
 	H.spawned[#H.spawned + 1] = { frame = H.frame, n = #out, xml = content:sub(1, 120) }

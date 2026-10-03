@@ -3,7 +3,7 @@ A magma core tool. Raise a volcano on the ground in a few seconds and watch it e
 
 [h2]Features[/h2]
 [list]
-[*]The cone grows out of the ground layer by layer, exactly where you clicked
+[*]The cone builds up layer by layer, exactly where you clicked
 [*]Smoke column, tremors, glowing lava streams and crater
 [*]Heavy lava bombs thrown in arcs: real craters through brick, explosions, spreading fires
 [*]Lava flows roll down the slopes and burn and break what they touch

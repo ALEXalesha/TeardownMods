@@ -11,7 +11,7 @@ local function sh() return T.sharedOf() end
 local function srv() return T.env().server end
 local A = H.API
 
-H.spawnModel = { pivot = "bottomcenter", latency = 1 }
+H.spawnModel = { pivot = "bottomcenter" }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = -4
 H.P(1).yaw = 0

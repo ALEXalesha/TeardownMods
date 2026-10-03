@@ -14,7 +14,7 @@ T.budget("SpawnParticle", 40)
 T.budget("QueryRaycast", 80)
 T.budget("ConstrainPosition", 30)
 
-H.spawnModel = { pivot = "bottomcenter", latency = 1 }
+H.spawnModel = { pivot = "center", physics = true }
 H.cubeCollision = true
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0

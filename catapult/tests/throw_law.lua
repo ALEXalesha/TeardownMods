@@ -9,7 +9,7 @@ local function sh() return T.sharedOf() end
 local function srv() return T.env().server end
 local function cli() return T.cenv().client end
 
-H.spawnModel = { pivot = "bottomcenter", latency = 1 }
+H.spawnModel = { pivot = "center", physics = true }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
 T.load("main.lua", "main")

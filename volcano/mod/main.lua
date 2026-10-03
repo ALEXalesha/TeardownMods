@@ -51,6 +51,7 @@ function readSettings()
 		duration = clamp(getF("duration", 45), 20, 120),
 		fire = getB("fire", true),
 		ash = getB("ash", true),
+		debug = getB("debug", true),
 	}
 end
 
@@ -108,7 +109,7 @@ function server.place(p)
 	end
 	if #server.cones >= MAX_CONES * LAYERS then server.clear() end
 	local v = {
-		phase = "grow", t = 0, s = s, scale = scale, vs = vs, R = R, ground = g, owner = p,
+		phase = "grow", t = 0, s = s, scale = scale, vs = vs, R = R, ground = g, click = VecCopy(g), owner = p,
 		rot = QuatEuler(0, rnd(0, 360), 0), layers = {}, offset = nil, bombAcc = 0,
 		top = VecAdd(g, Vec(0, (CONE_H - CRATER_D) * vs - 0.3 * vs * 4, 0)),
 		rumbleT = s.duration * 0.25, eruptT = s.duration * 0.75, tracked = {}, cursor = 1, scanT = 0,
@@ -155,53 +156,88 @@ function server.clearFootprint(v)
 end
 
 -- raise layer k: spawned below its place, then lifted into it over LAYER_TIME
-function server.spawnLayer(v, k)
-	local vs = v.vs
-	local drop = math.ceil(CONE_H / LAYERS) * vs + 0.5
-	local xml = "<body dynamic='false'><vox file='" .. CONE_FILES[k] .. "' scale='" .. v.scale .. "'/></body>"
-	local base = Transform(VecAdd(v.ground, Vec(0, -0.3 * vs * 4, 0)), v.rot)
-	local ents = Spawn(xml, base, true)
-	local body, shape = 0, 0
+-- Where does the game put a spawned vox relative to its spawn transform? The first two versions
+-- assumed a pivot and corrected it with shape-size maths and SetBodyTransform; in the game the
+-- cone still stood about 20 m beside the smoke. Now, like the game's own spawn menu: a probe of the
+-- cone model is spawned once, its world bounds are read in the same tick (GetShapeBounds - no
+-- assumption about pivot or model axes), and that offset is used to spawn every layer directly at
+-- its final place (nothing is moved afterwards, static bodies may not move at all).
+function server.calibrateCone(v)
+	local probeAt = Transform(VecAdd(v.ground, Vec(0, 150, 0)), v.rot)
+	local ents = Spawn("<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[1] .. "' scale='" .. v.scale .. "'/></body>", probeAt, true)
+	local off = nil
 	for i = 1, #ents do
-		local ty = GetEntityType(ents[i])
-		if ty == "body" and body == 0 then body = ents[i] end
-		if ty == "shape" and shape == 0 then shape = ents[i] end
+		if GetEntityType(ents[i]) == "shape" and not off then
+			local mn, mx = GetShapeBounds(ents[i])
+			local bottom = Vec((mn[1] + mx[1]) * 0.5, mn[2], (mn[3] + mx[3]) * 0.5)
+			off = TransformToLocalVec(probeAt, VecSub(bottom, probeAt.pos))   -- spawn point -> bottom centre, in cone space
+		end
 	end
-	if body == 0 then return end
-	-- first guess: the vox pivot is the centre of the bottom face (the game's convention). The real
-	-- footprint is measured from the next tick on (a freshly spawned shape may not report its
-	-- final transform yet) and the whole cone is moved onto the anchor (server.anchorCone).
-	if not v.final then v.final = Transform(base.pos, v.rot) end
-	local layer = { body = body, shapes = GetBodyShapes(body), t = 0, drop = drop }
+	for i = 1, #ents do if GetEntityType(ents[i]) == "body" then Delete(ents[i]) end end
+	v.offLocal = off or Vec(0, 0, 0)
+	v.measured = off ~= nil
+end
+
+local function layerBounds(layer)
+	local mn, mx = Vec(1e9, 1e9, 1e9), Vec(-1e9, -1e9, -1e9)
+	for _, sh in ipairs(layer.shapes) do
+		if IsHandleValid(sh) then
+			local a, b = GetShapeBounds(sh)
+			for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
+		end
+	end
+	return mn, mx
+end
+
+function server.spawnLayer(v, k)
+	if not v.offLocal then server.calibrateCone(v) end
+	local want = VecAdd(v.ground, Vec(0, -0.3 * v.vs * 4, 0))         -- bottom centre of the cone, sunk a little
+	local xml = "<body dynamic='false' tags='volcano'><vox file='" .. CONE_FILES[k] .. "' scale='" .. v.scale .. "'/></body>"
+	local body, shapes = 0, {}
+	for attempt = 1, 2 do
+		local t = Transform(VecSub(want, QuatRotateVec(v.rot, v.offLocal)), v.rot)
+		local ents = Spawn(xml, t, true)
+		body, shapes = 0, {}
+		for i = 1, #ents do
+			local ty = GetEntityType(ents[i])
+			if ty == "body" and body == 0 then body = ents[i] end
+			if ty == "shape" then shapes[#shapes + 1] = ents[i] end
+		end
+		if body == 0 then return end
+		-- check where it really is; if off, spawn it again where it belongs (once)
+		local mn, mx = layerBounds({ shapes = shapes })
+		local bottom = Vec((mn[1] + mx[1]) * 0.5, mn[2], (mn[3] + mx[3]) * 0.5)
+		local err = VecSub(want, bottom)
+		if VecLength(err) < 0.3 or attempt == 2 then break end
+		v.offLocal = VecSub(v.offLocal, TransformToLocalVec(Transform(Vec(0, 0, 0), v.rot), err))
+		Delete(body)
+	end
+	local layer = { body = body, shapes = shapes, t = LAYER_TIME, drop = 0 }
 	v.layers[#v.layers + 1] = layer
 	server.cones[#server.cones + 1] = body
-	SetTag(body, "volcano")
-	server.placeLayer(v, layer)
 	shared.v.layers = #v.layers
+	server.anchorFromCone(v)
 end
 
-function server.layerY(layer)
-	return -layer.drop * (1 - smooth(0, 1, layer.t / LAYER_TIME))
-end
-
-function server.placeLayer(v, layer)
-	SetBodyTransform(layer.body, Transform(VecAdd(v.final.pos, Vec(0, server.layerY(layer), 0)), v.final.rot))
-end
-
--- closed loop: where does the bottom layer really stand? move every layer so that its footprint
--- centre is exactly under the anchor (the clicked point), whatever origin the vox loader used
-function server.anchorCone(v)
-	local l = v.layers[1]
-	if not l or l.t <= 0 or #l.shapes == 0 or not IsHandleValid(l.shapes[1]) then return end
-	local shape = l.shapes[1]
-	local sx, sy, sz, svs = GetShapeSize(shape)
-	local foot = TransformToParentPoint(GetShapeWorldTransform(shape), Vec(sx * svs * 0.5, 0, sz * svs * 0.5))
-	local want = VecAdd(v.ground, Vec(0, -0.3 * v.vs * 4 + server.layerY(l), 0))
-	local err = VecSub(want, foot)
-	if VecLength(err) > 0.02 then
-		v.final = Transform(VecAdd(v.final.pos, err), v.final.rot)
-		for i = 1, #v.layers do server.placeLayer(v, v.layers[i]) end
+-- smoke, lava, crater light and bombs come from where the cone really stands (its world bounds)
+function server.anchorFromCone(v)
+	local mn, mx = Vec(1e9, 1e9, 1e9), Vec(-1e9, -1e9, -1e9)
+	for i = 1, #v.layers do
+		local a, b = layerBounds(v.layers[i])
+		for k = 1, 3 do mn[k] = math.min(mn[k], a[k]) mx[k] = math.max(mx[k], b[k]) end
 	end
+	local cx, cz = (mn[1] + mx[1]) * 0.5, (mn[3] + mx[3]) * 0.5
+	v.centre = Vec(cx, v.click[2], cz)
+	v.ground = Vec(cx, v.ground[2], cz)
+	-- the layer models are all the full cone size, so any layer's box top is the cone top
+	v.top = Vec(cx, mx[2] - CRATER_D * v.vs, cz)
+	local sv = shared.v
+	sv.x, sv.z = cx, cz
+	sv.top = v.top[2]
+	local bt = GetBodyTransform(v.layers[1].body).pos
+	sv.dbg = string.format("volcano: click %.1f %.1f %.1f | cone body %.1f %.1f %.1f | cone bounds centre %.1f %.1f %.1f (%.1f x %.1f m) | smoke %.1f %.1f | off %.2f m%s",
+		v.click[1], v.click[2], v.click[3], bt[1], bt[2], bt[3], cx, (mn[2] + mx[2]) * 0.5, cz, mx[1] - mn[1], mx[2] - mn[2], sv.x, sv.z,
+		math.sqrt((cx - v.click[1]) ^ 2 + (cz - v.click[3]) ^ 2), v.measured and "" or " (no probe)")
 end
 
 function server.update(dt)
@@ -214,14 +250,6 @@ function server.update(dt)
 	if v.phase == "grow" then
 		local want = math.min(LAYERS, math.floor(v.t / LAYER_TIME) + 1)
 		if #v.layers < want then server.spawnLayer(v, #v.layers + 1) end
-		for i = 1, #v.layers do
-			local l = v.layers[i]
-			if l.t < LAYER_TIME then
-				l.t = math.min(LAYER_TIME, l.t + dt)
-				server.placeLayer(v, l)
-			end
-		end
-		server.anchorCone(v)
 		sv.k = 0.1
 		if v.t >= GROW_TIME + 0.2 then server.setPhase(v, "rumble", v.rumbleT) end
 	elseif v.phase == "rumble" then
@@ -704,6 +732,17 @@ local PHASES = {
 }
 
 function client.draw(dt)
+	local svd = shared.v
+	if readSettings().debug and svd.phase ~= "idle" and svd.dbg and svd.dbg ~= "" and not GetBool("game.ui.hidemods") then
+		UiPush()
+			UiTranslate(20, UiHeight() - 24)
+			UiAlign("left middle")
+			UiFont("regular.ttf", 16)
+			UiTextShadow(0, 0, 0, 0.8, 1)
+			UiColor(1, 1, 0.6, 0.95)
+			UiText(svd.dbg)
+		UiPop()
+	end
 	if client.flash > 0.01 then
 		UiPush()
 			UiColor(1, 0.7, 0.4, client.flash * 0.6)

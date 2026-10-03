@@ -1,0 +1,29 @@
+# Checks on the home Gitea, on the PC runner (label windows): every harness test of every mod,
+# check_mod.py, the Workshop upload check and its self-test. Assets are not rebuilt (no ffmpeg
+# needed). check_mod.py and the harness read the game's data/script_defs.lua, which is installed
+# on the PC; the runner has no admin rights, so Python comes from a local venv, not setup-python.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  mods:
+    name: Teardown mods
+    runs-on: windows
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python venv
+        shell: pwsh
+        run: |
+          py -3.13 -m venv .ci-venv
+          .ci-venv\Scripts\python -m pip install --quiet lupa numpy pillow
+
+      - name: All checks
+        shell: pwsh
+        run: .ci-venv\Scripts\python _shared\tdlib\ci_all.py

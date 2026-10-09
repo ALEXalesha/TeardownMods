@@ -35,6 +35,9 @@ local HOLES_PER_UPDATE = 24
 local HOLE_R2_BUDGET = 900      -- per step: sum of hole radius^2 (holes in shells cost ~ area)
 local SEG = 10               -- client: wall segment width
 local DRAW_HALF = 90         -- client: segments drawn within this lateral distance
+local LEAN = 14              -- client: the face leans forward this many degrees
+local LEAN_COS, LEAN_TAN = math.cos(math.rad(LEAN)), math.tan(math.rad(LEAN))
+local SLICES = { 0.35, 0.7 } -- client: inner slices of the crest, as parts of CREST behind the face
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -248,7 +251,10 @@ function server.current(w, dt)
 		if IsHandleValid(b) and IsBodyDynamic(b) then
 			local st = w.state[b]
 			if not st then st = { last = w.clock } w.state[b] = st end
+			-- bodies are visited in turns: the drag towards the flow may catch up the whole gap (it
+			-- only approaches the flow speed), the vertical push may not (a long wait was one huge kick)
 			local since = math.max(dt, w.clock - st.last)
+			local sinceV = math.min(since, 0.1)
 			st.last = w.clock
 			local bt = GetBodyTransform(b)
 			local com = TransformToParentPoint(bt, GetBodyCenterOfMass(b))
@@ -266,8 +272,15 @@ function server.current(w, dt)
 						local massK = clamp(20000 / math.max(mass, 1), 0.6, 1)
 						local dvx = (u * dir[1] - v[1]) * kf * massK
 						local dvz = (u * dir[3] - v[3]) * kf * massK
-						local dvy = 10 * since * sub * 0.95
-						if w.phase == "wave" and w.s - a < CREST then dvy = dvy + 7 * kf * sub end
+						-- buoyancy by density, at most 3/4 of the weight: debris is dragged along and
+						-- rolled, never thrown up (in-game 04.10: it was 0.95 g for everything plus a
+						-- crest kick, so even concrete flew 20 m high); upward motion is damped
+						local vol = math.max((bmax[1] - bmin[1]) * (bmax[2] - bmin[2]) * (bmax[3] - bmin[3]), 0.001)
+						local float = clamp(1000 * vol / math.max(mass, 1), 0, 1)
+						-- vehicles are hollow: they float and ride the flood (just above their weight), debris sinks
+						local lift = GetBodyVehicle(b) ~= 0 and 1.1 or 0.75
+						local dvy = 10 * sinceV * sub * lift * float
+						if v[2] > 0 then dvy = dvy - v[2] * (1 - math.exp(-4 * sinceV)) end
 						ApplyBodyImpulse(b, com, VecScale(Vec(dvx, dvy, dvz), mass))
 					end
 				end
@@ -390,7 +403,7 @@ local function segGround(w, k, rays)
 end
 
 -- the wall, its foam crest and the flood sheet behind it: depth-tested sprites, at most
--- 3 per segment, segments within 90 m of the camera sideways (at most 57 sprites)
+-- 7 per segment, segments within 90 m of the camera sideways (at most 133 sprites)
 function client.render(dt)
 	local w = shared.ts
 	if w.phase == "idle" then return end
@@ -427,8 +440,33 @@ function client.render(dt)
 			local hh = topY - bottomY
 			local base = Vec(w.ox + w.s * w.dx + l * lat[1], bottomY, w.oz + w.s * w.dz + l * lat[3])
 			if hh > 0.3 then
-				DrawSprite(client.wave, Transform(VecAdd(base, Vec(0, hh * 0.5, 0)), yaw), SEG * 1.08, hh, 1, 1, 1, 0.95, true, false)
+				-- a body of water, not one card (in-game 04.10: "2D, like a picture"): the face leans
+				-- forward like a breaking wall, two inner slices follow the height profile behind it,
+				-- a back slope runs from the crest down to the surge, a foam lip curls over the top
+				local fh = hh / LEAN_COS
+				local fc = VecAdd(base, VecAdd(Vec(0, hh * 0.5, 0), VecScale(dir, hh * 0.5 * LEAN_TAN)))
+				DrawSprite(client.wave, Transform(fc, QuatRotateQuat(yaw, QuatEuler(-LEAN, 0, 0))), SEG * 1.08, fh, 1, 1, 1, 0.95, true, false)
+				for _, f in ipairs(SLICES) do
+					local x = CREST * f
+					local sy = w.oy + math.min(waterAt(w, x), w.h)
+					local sb = math.min(gy, sy)
+					if sy - sb > 0.3 then
+						local c = VecAdd(base, VecScale(dir, -x))
+						c[2] = (sy + sb) * 0.5
+						DrawSprite(client.wave, Transform(c, yaw), SEG * 1.08, sy - sb, 0.82, 0.9, 1, 0.75, true, false)
+					end
+				end
+				local backL = CREST * 1.2
+				local by = math.max(w.oy + math.min(waterAt(w, backL), w.h), bottomY)
+				local dy = topY - by
+				if dy > 0.2 then
+					local mid = VecAdd(Vec(base[1], (topY + by) * 0.5, base[3]), VecScale(dir, -backL * 0.5))
+					local tilt = math.deg(math.atan2(backL, dy))
+					DrawSprite(client.flood, Transform(mid, QuatRotateQuat(yaw, QuatEuler(-tilt, 0, 0))), SEG * 1.05, math.sqrt(backL * backL + dy * dy), 1, 1, 1, 0.85, true, false)
+				end
 				local top = Vec(base[1], topY, base[3])
+				local lip = VecAdd(top, VecScale(dir, hh * LEAN_TAN))
+				DrawSprite(client.foam, Transform(lip, QuatRotateQuat(yaw, QuatEuler(-70, 0, 0))), SEG * 1.3, w.h * 0.5 + 1, 1, 1, 1, 0.9, true, false)
 				DrawSprite(client.foam, Transform(top, QuatLookAt(top, cam.pos)), SEG * 1.4, w.h * 0.3 + 1, 1, 1, 1, 0.9, true, false)
 			end
 			if w.phase == "wave" then

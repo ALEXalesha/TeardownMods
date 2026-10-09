@@ -54,9 +54,21 @@ T.frames(120)
 local v = (sh().ts.s - s0) / 2
 T.check(math.abs(v - 18) < 0.9, string.format("front moves at the set speed (%.1f m/s)", v))
 local spritesMax, badDepth = 0, 0
+-- the water has a body, not one flat card per segment (in-game 04.10: "2D, like a picture"):
+-- the wave sprites spread back from the front face, and a back slope stands above the flood
+local waveDepth, backSlope = 0, 0
 T.frameHooks[#T.frameHooks + 1] = function()
 	spritesMax = math.max(spritesMax, #H.sprites)
 	for _, s in ipairs(H.sprites) do if not s.depthTest then badDepth = badDepth + 1 end end
+	local ts = sh().ts
+	if ts.phase ~= "wave" then return end
+	local lo, hi = 1e9, -1e9
+	for _, s in ipairs(H.sprites) do
+		local along = (s.pos[1] - ts.ox) * ts.dx + (s.pos[3] - ts.oz) * ts.dz
+		if s.path:find("wave.png") then lo = math.min(lo, along); hi = math.max(hi, along) end
+		if s.path:find("flood.png") and s.pos[2] > ts.oy + 0.4 * ts.h and along < ts.s then backSlope = backSlope + 1 end
+	end
+	if hi > lo then waveDepth = math.max(waveDepth, hi - lo) end
 end
 
 -- it passes the player
@@ -71,7 +83,9 @@ T.check(H.P(1).pos[3] - pp0[3] > 5, string.format("the player is carried along (
 T.check(H.bodies[crate].pos[3] - c0[3] > 10, string.format("a crate is carried away (%.1f m)", H.bodies[crate].pos[3] - c0[3]))
 T.check(H.bodies[car].pos[3] - (-50) > 3, string.format("a 1.2 t car is carried away (%.1f m)", H.bodies[car].pos[3] + 50))
 T.check(math.abs(H.bodies[roofCrate].pos[3] + 37) < 0.05, "a crate up on a 25 m roof stays dry")
-T.check(spritesMax > 10 and spritesMax <= 57 and badDepth == 0, string.format("the wall is drawn with depth-tested sprites (max %d per frame)", spritesMax))
+T.check(spritesMax > 10 and spritesMax <= 133 and badDepth == 0, string.format("the wall is drawn with depth-tested sprites (max %d per frame, <= 7 per segment)", spritesMax))
+T.check(waveDepth >= 6, string.format("the wave has a body behind its face (%.1f m deep, need >= 6)", waveDepth))
+T.check(backSlope > 0, "a back slope runs from the crest down to the flood")
 T.check(T.loopFrames("roar.ogg") > 100, "roar of the wave")
 
 -- weak structures torn, strong ones barely, hard ones not at all

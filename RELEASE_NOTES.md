@@ -4,6 +4,11 @@
 
 ## English
 
+### 2026-10-10 - volcano debug line hidden, tsunami flood with depth
+
+- **Volcano**: the yellow debug line is gone from the screen (the cone stands right, Alexey's test of 10.10). It is still there as hidden diagnostics: "Debug line (for testing)" in the mod's options, off by default, under a new key so an old saved setting does not bring it back.
+- **Tsunami flood**: the water behind the wave is no longer one flat sheet that ended 72 m behind the crest. It is drawn around you wherever the water is: a dark murky depth under a lighter surface that rides a gentle running swell, a middle layer that drifts slower so the depth shows as you move, foam and debris streaks floating with the current, a foam bead where the crest falls into the surge, the surge itself following the slope down to the flood level, and a wall of water with foam on top at the side edges of the flooded zone. Far away it turns into big sheets that fade into the fog. The physics (drag, buoyancy, destruction) is exactly the same as in the previous build; at most 280 sprites per frame.
+
 ### 2026-10-09 - tsunami: drags and destroys instead of tossing, water with volume
 
 - **Tsunami**: debris is no longer thrown into the sky. Every submerged piece used to be held up by 0.95 g plus an extra kick in the crest, and pieces visited after a long wait got one huge push, so even concrete flew 20 m high. Now buoyancy depends on density (at most 3/4 of the weight), upward motion is damped and the vertical push is never accumulated; vehicles still float and are carried at full speed.
@@ -20,6 +25,11 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 10.10.2026 - строка отладки вулкана скрыта, затопление цунами с глубиной
+
+- **Вулкан**: жёлтой строки отладки на экране больше нет (конус стоит правильно, проверка Алексея 10.10). Она осталась скрытой диагностикой: «Строка отладки (для проверки)» в настройках мода, по умолчанию выключена, под новым ключом, чтобы старая сохранённая настройка её не вернула.
+- **Затопление цунами**: вода за волной больше не плоский лист, который кончался в 72 м за гребнем. Она рисуется вокруг вас везде, где есть вода: тёмная мутная глубина под более светлой поверхностью с пологой бегущей зыбью, средний слой, который плывёт медленнее, поэтому при движении видна глубина, полосы пены и мусора, плывущие с течением, валик пены там, где гребень падает в поток, сам поток спускается по склону к уровню затопления, а по бокам зоны затопления - стенка воды с пеной поверху. Вдали вода переходит в большие листы, которые тают в тумане. Физика (течение, плавучесть, разрушение) точно такая же, как в прошлой сборке; не больше 280 спрайтов за кадр.
 
 ### 09.10.2026 - цунами: тащит и ломает, а не подкидывает; объёмная вода
 

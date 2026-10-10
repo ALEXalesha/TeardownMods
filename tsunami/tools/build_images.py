@@ -1,4 +1,5 @@
-"""Tsunami sprites (water wall, foam crest, flood sheet), preview.jpg and UI textures."""
+"""Tsunami sprites (water wall, foam crest, flood surface and body, current streaks, flood side
+wall), preview.jpg and UI textures."""
 from __future__ import annotations
 
 import math
@@ -52,17 +53,88 @@ def foam_png(path, w=256, h=96, seed=3):
     Image.fromarray(arr, "RGBA").save(path)
 
 
+def _noise(rng, h, w, cell, blur):
+    n = rng.random((h // cell + 2, w // cell + 2))
+    n = np.kron(n, np.ones((cell, cell)))[:h, :w]
+    img = Image.fromarray((n * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(blur))
+    return np.asarray(img, np.float32) / 255
+
+
 def flood_png(path, size=256, seed=4):
+    """The flood's surface (tinted light by the script): crossing ripples with bright crests,
+    flecks of foam, soft edges so overlapping tiles blend into one surface."""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32) / size
     rip = 0.5 + 0.25 * np.sin(xx * 31 + np.sin(yy * 13) * 2) + 0.25 * np.sin(yy * 23 + np.sin(xx * 11) * 3)
-    edge = np.minimum(np.minimum(xx, 1 - xx), np.minimum(yy, 1 - yy)) * 8
-    a = np.clip(edge, 0, 1) * (0.55 + 0.15 * rip)
+    fine = 0.5 + 0.5 * np.sin(xx * 97 + yy * 41 + np.sin(yy * 29) * 1.5)
+    crest = np.clip((rip - 0.72) / 0.28, 0, 1) ** 1.5
+    fleck = np.clip((_noise(rng, size, size, 4, 2.5) - 0.6) / 0.25, 0, 1) ** 1.5
+    foam = np.clip(crest * 0.7 + fleck * 0.8, 0, 1)
+    edge = np.clip(np.sin(np.pi * xx) * np.sin(np.pi * yy) * 2.5, 0, 1)
+    shade = 0.55 + 0.25 * rip + 0.08 * fine
+    v = shade * (1 - foam) + 1.0 * foam
+    a = edge * np.clip(0.42 + 0.18 * rip + 0.4 * foam, 0, 1)
     arr = np.zeros((size, size, 4), np.uint8)
-    arr[..., 0] = (60 + 60 * rip).astype(np.uint8)
-    arr[..., 1] = (85 + 60 * rip).astype(np.uint8)
-    arr[..., 2] = (80 + 50 * rip).astype(np.uint8)
+    arr[..., 0] = (v * 225).clip(0, 255).astype(np.uint8)
+    arr[..., 1] = (v * 240).clip(0, 255).astype(np.uint8)
+    arr[..., 2] = (v * 245).clip(0, 255).astype(np.uint8)
     arr[..., 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(arr, "RGBA").save(path)
+
+
+def flood_deep_png(path, size=256, seed=7):
+    """The body of the flood below the surface (tinted dark by the script): smooth murky
+    clouds of silt, nearly opaque in the middle, soft edges."""
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32) / size
+    n = 0.6 * _noise(rng, size, size, 32, 14) + 0.4 * _noise(rng, size, size, 12, 5)
+    edge = np.clip(np.sin(np.pi * xx) * np.sin(np.pi * yy) * 2, 0, 1)
+    v = 0.75 + 0.25 * n
+    a = edge * (0.8 + 0.2 * n)
+    arr = np.zeros((size, size, 4), np.uint8)
+    arr[..., 0] = (v * 235).astype(np.uint8)
+    arr[..., 1] = (v * 245).astype(np.uint8)
+    arr[..., 2] = (v * 240).astype(np.uint8)
+    arr[..., 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(arr, "RGBA").save(path)
+
+
+def streak_png(path, w=48, h=256, seed=8):
+    """A streak of foam (or of debris, tinted brown by the script) drawn out along the current:
+    long along the texture's height, tapered ends, broken up."""
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    u = xx / (w - 1) - 0.5
+    t = yy / (h - 1)
+    wobble = 0.12 * np.sin(t * 9 + 1.3) + 0.05 * np.sin(t * 23)
+    across = np.exp(-((u - wobble) / 0.28) ** 2)
+    taper = np.clip(np.sin(np.pi * t), 0, 1) ** 0.7
+    br = _noise(rng, h, w, 6, 2.5)
+    a = np.clip(across * taper * (0.35 + 0.9 * br) - 0.12, 0, 1)
+    arr = np.zeros((h, w, 4), np.uint8)
+    arr[..., :3] = (235 + 20 * br[..., None]).clip(0, 255).astype(np.uint8)
+    arr[..., 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(arr, "RGBA").save(path)
+
+
+def wall_png(path, w=256, h=256, seed=9):
+    """The side of the flood seen across the zone's edge: murky dark water at the bottom,
+    lighter towards the surface, a band of foam along the top edge."""
+    rng = np.random.default_rng(seed)
+    y = np.linspace(1, 0, h)[:, None] * np.ones((1, w))          # 0 bottom .. 1 top
+    x = np.linspace(0, 1, w)[None, :] * np.ones((h, 1))
+    n = _noise(rng, h, w, 16, 6)
+    streak = 0.5 + 0.5 * np.sin(x * 33 + n * 4)
+    r = 14 + 50 * y + 20 * n
+    g = 45 + 95 * y + 25 * n
+    b = 52 + 85 * y + 20 * n
+    foam = np.clip((y - 0.88) / 0.12, 0, 1) ** 1.2 * (0.55 + 0.45 * streak)
+    r = r * (1 - foam) + 240 * foam
+    g = g * (1 - foam) + 248 * foam
+    b = b * (1 - foam) + 250 * foam
+    side = np.clip(np.minimum(x, 1 - x) * 10, 0, 1)
+    a = side * np.clip(0.8 + 0.15 * y, 0, 1)
+    arr = np.stack([r, g, b, a * 255], -1).clip(0, 255).astype(np.uint8)
     Image.fromarray(arr, "RGBA").save(path)
 
 
@@ -132,4 +204,7 @@ if __name__ == "__main__":
     wave_png(os.path.join(MOD, "ui", "wave.png"))
     foam_png(os.path.join(MOD, "ui", "foam.png"))
     flood_png(os.path.join(MOD, "ui", "flood.png"))
+    flood_deep_png(os.path.join(MOD, "ui", "flood_deep.png"))
+    streak_png(os.path.join(MOD, "ui", "streak.png"))
+    wall_png(os.path.join(MOD, "ui", "wall.png"))
     build_preview()

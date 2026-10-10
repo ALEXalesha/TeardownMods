@@ -45,6 +45,19 @@ T.check(mid >= 1 and mid < 7, "layers appear one after another (" .. mid .. " af
 T.check(T.loopFrames("grind.ogg") > 30, "grinding sound while it grows")
 T.runUntil(function() return sh().v.phase == "rumble" end, 600)
 T.check(sh().v.layers == 7, "all seven layers raised")
+-- in-game 10.10 ("works great, the yellow debug line can be removed"): the debug line is a hidden
+-- option now - off by default, on only when "Debug line" is switched on in the mod's options
+T.frames(1)
+T.check(not T.hasText("volcano: click") and not T.hasText("cone height"), "no debug line on screen by default")
+H.reg["savegame.mod.debugline"] = true
+T.frames(1)
+T.check(T.hasText("volcano: click"), "debug line shown when switched on in the options")
+H.reg["savegame.mod.debugline"] = nil
+-- an old save from the builds with the line on by default ("Reset to defaults" wrote debug = true)
+H.reg["savegame.mod.debug"] = true
+T.frames(1)
+T.check(not T.hasText("volcano: click"), "an old saved debug = true does not bring the line back")
+H.reg["savegame.mod.debug"] = nil
 local layers = srv().v.layers
 local static, risen = true, true
 for i = 1, #layers do

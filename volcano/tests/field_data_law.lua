@@ -12,6 +12,7 @@ local A = H.API
 H.spawnModel = { pivot = "center", contentBounds = true, physics = true }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = -4
+H.reg["savegame.mod.debugline"] = true   -- the debug line is off by default since 10.10; this law reads it
 T.load("main.lua", "main")
 T.init("main")
 T.frames(2)

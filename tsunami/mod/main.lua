@@ -38,6 +38,19 @@ local DRAW_HALF = 90         -- client: segments drawn within this lateral dista
 local LEAN = 14              -- client: the face leans forward this many degrees
 local LEAN_COS, LEAN_TAN = math.cos(math.rad(LEAN)), math.tan(math.rad(LEAN))
 local SLICES = { 0.35, 0.7 } -- client: inner slices of the crest, as parts of CREST behind the face
+-- client: the flood behind the crest (in-game 10.10: "less 2D, more volumetric"); everything is
+-- bounded per frame and centred on the camera, nothing grows with the size of the flooded zone
+local SPRITE_CAP = 280            -- all water sprites per frame
+local FLOOD_CAP = 150             -- of them: the flood field, its streaks and side walls
+local FULL_DETAIL = 40            -- front segments this close to the camera sideways get every sprite
+local NEAR_TILE, NEAR_N = 10, 6   -- near field: 6 x 6 tiles of 10 m, a surface and a deep layer
+local MID_TILE, MID_N = 20, 3     -- a middle layer, coarser and drifting slower (parallax depth)
+local FAR_HALF, FAR_CHUNK = 150, 100 -- far sheets out to 150 m around the camera, pieces up to 100 m
+local STREAKS = 16                -- foam and debris streaks drifting with the current
+local STREAK_A, STREAK_L = 40, 30 -- their window around the camera, half sizes along / across
+local WALL_PIECE, WALL_N = 12, 6  -- side walls: up to 6 pieces of 12 m along the zone's edge
+local WALL_NEAR = 70              -- drawn when the camera is this close to the edge
+local RAYS_PER_FRAME = 6          -- ground probes per frame for the wall and the side walls
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -333,12 +346,18 @@ function client.init()
 	client.wave = LoadSprite("MOD/ui/wave.png")
 	client.foam = LoadSprite("MOD/ui/foam.png")
 	client.flood = LoadSprite("MOD/ui/flood.png")
+	client.deep = LoadSprite("MOD/ui/flood_deep.png")
+	client.streak = LoadSprite("MOD/ui/streak.png")
+	client.wall = LoadSprite("MOD/ui/wall.png")
 	client.snd = { crash = LoadSound("MOD/snd/crash.ogg", 150), horn = LoadSound("MOD/snd/horn.ogg") }
 	client.roar = LoadLoop("MOD/snd/roar.ogg", 200)
 	client.recede = LoadLoop("MOD/snd/recede.ogg", 60)
 	client.anim = {}
 	client.lastN = 0
 	client.ground = {}
+	client.sideGround = {}
+	client.flow, client.clock = 0, 0
+	client.ns, client.nf = 0, 0
 	client.passed = false
 	client.lastX = nil
 end
@@ -356,6 +375,8 @@ function client.tick(dt)
 	if w.n ~= client.lastN then
 		client.lastN = w.n
 		client.ground = {}
+		client.sideGround = {}
+		client.flow, client.clock = 0, 0
 		client.passed = false
 		client.lastX = nil
 		PlaySound(client.snd.horn, nil, 0.8)
@@ -388,6 +409,38 @@ function client.tick(dt)
 	end
 end
 
+-- every water sprite goes through here: a hard cap per frame, a separate cap for the flood
+local function put(img, t, width, height, r, g, b, a, flood)
+	if client.ns >= SPRITE_CAP then return end
+	if flood then
+		if client.nf >= FLOOD_CAP then return end
+		client.nf = client.nf + 1
+	end
+	client.ns = client.ns + 1
+	DrawSprite(img, t, width, height, r, g, b, a, true, false, flood == true)
+end
+
+-- world point from the wave's frame: a along the travel, l sideways
+local function wpos(w, a, l, y) return Vec(w.ox + a * w.dx - l * w.dz, y, w.oz + a * w.dz + l * w.dx) end
+
+-- the flood's swell: height and slope (along, across) of gentle waves running downstream
+local function swell(a, l, t, amp)
+	local p1 = 0.23 * a - 1.7 * t
+	local p2 = 0.17 * l + 0.11 * a + 1.1 * t
+	local y = amp * (0.6 * math.sin(p1) + 0.4 * math.sin(p2))
+	local ga = amp * (0.6 * 0.23 * math.cos(p1) + 0.4 * 0.11 * math.cos(p2))
+	local gl = amp * 0.4 * 0.17 * math.cos(p2)
+	return y, ga, gl
+end
+
+-- a flat sprite tilted to a slope (ga along the travel, gl sideways); its height runs along the travel
+local function tilted(flat, ga, gl)
+	return QuatRotateQuat(flat, QuatEuler(math.deg(math.atan(ga)), -math.deg(math.atan(gl)), 0))
+end
+
+-- fixed pseudo-random numbers per streak (no math.random: the server shares it in a local game)
+local function hash(i, k) local x = math.sin(i * 12.9898 + k * 78.233) * 43758.5453 return x - math.floor(x) end
+
 -- ground height under wall segment k at the front's current position (cached, a few per frame)
 local function segGround(w, k, rays)
 	local c = client.ground[k]
@@ -402,30 +455,37 @@ local function segGround(w, k, rays)
 	return y, rays - 1
 end
 
--- the wall, its foam crest and the flood sheet behind it: depth-tested sprites, at most
--- 7 per segment, segments within 90 m of the camera sideways (at most 133 sprites)
-function client.render(dt)
-	local w = shared.ts
-	if w.phase == "idle" then return end
-	local cam, ca, cl = camFrame(w)
-	local dir = Vec(w.dx, 0, w.dz)
-	local lat = Vec(-w.dz, 0, w.dx)
-	local yaw = QuatLookAt(Vec(0, 0, 0), dir)
-	local flat = QuatRotateQuat(yaw, QuatEuler(-90, 0, 0))
-	if w.phase == "recede" then
-		local k = 1 - clamp(w.t / RECEDE_TIME, 0, 1)
-		if w.flood <= 0 or k <= 0 then return end
-		for i = -1, 1 do
-			for j = -1, 1 do
-				local p = VecAdd(cam.pos, VecAdd(VecScale(dir, i * 40), VecScale(lat, j * 40)))
-				p[2] = w.oy + w.flood * k
-				DrawSprite(client.flood, Transform(p, flat), 41, 41, 1, 1, 1, 0.75 * k, true, false)
-			end
-		end
-		return
-	end
-	if w.h < 0.2 then return end
-	local rays = 6
+-- ground height under side wall piece k on the edge `side` (the wave's frame is fixed: cached for good)
+local function sideGround(w, side, k, rays)
+	local key = side * 100000 + k
+	local y = client.sideGround[key]
+	if y or rays <= 0 then return y, rays end
+	local p = wpos(w, (k + 0.5) * WALL_PIECE, side * HALF_WIDTH, w.oy + 40)
+	QueryRequire("physical static")
+	local hit, dist = QueryRaycast(p, Vec(0, -1, 0), 120)
+	y = hit and (p[2] - dist) or (w.oy - 2)
+	client.sideGround[key] = y
+	return y, rays - 1
+end
+
+-- clip [a0, a1] x [l0, l1] to the flooded zone; nil when nothing is left
+local function clipZone(a0, a1, l0, l1, aMin, aMax)
+	a0, a1 = math.max(a0, aMin), math.min(a1, aMax)
+	l0, l1 = math.max(l0, -HALF_WIDTH), math.min(l1, HALF_WIDTH)
+	if a1 - a0 < 0.5 or l1 - l0 < 0.5 then return nil end
+	return a0, a1, l0, l1
+end
+
+-- colours: murky and dark in the depth, light and foamy on top
+local DEEP_C = { 0.11, 0.19, 0.18 }
+local MID_C = { 0.24, 0.35, 0.33 }
+local TOP_C = { 0.64, 0.77, 0.77 }
+local SURGE_C = { 0.76, 0.86, 0.87 }
+
+-- the wall of the wave: per 10 m segment a forward-leaning face, two inner slices, a back slope,
+-- a foam lip and crest foam, the fast surge behind it in tilted pieces with a foam bead at the foot of
+-- the slope; segments far to the side get only the face, slope, lip and one surge piece
+local function drawFront(w, cam, cl, dir, lat, yaw, flat, rays)
 	local k0 = math.floor((cl - DRAW_HALF) / SEG + 0.5)
 	local k1 = math.floor((cl + DRAW_HALF) / SEG + 0.5)
 	for k = k0, k1 do
@@ -434,49 +494,204 @@ function client.render(dt)
 			local gy
 			gy, rays = segGround(w, k, rays)
 			if gy then
-			-- the wall stands on the ground and reaches the flat crest height; none where the ground is higher
-			local topY = w.oy + w.h
-			local bottomY = math.min(gy, topY)
-			local hh = topY - bottomY
-			local base = Vec(w.ox + w.s * w.dx + l * lat[1], bottomY, w.oz + w.s * w.dz + l * lat[3])
-			if hh > 0.3 then
-				-- a body of water, not one card (in-game 04.10: "2D, like a picture"): the face leans
-				-- forward like a breaking wall, two inner slices follow the height profile behind it,
-				-- a back slope runs from the crest down to the surge, a foam lip curls over the top
-				local fh = hh / LEAN_COS
-				local fc = VecAdd(base, VecAdd(Vec(0, hh * 0.5, 0), VecScale(dir, hh * 0.5 * LEAN_TAN)))
-				DrawSprite(client.wave, Transform(fc, QuatRotateQuat(yaw, QuatEuler(-LEAN, 0, 0))), SEG * 1.08, fh, 1, 1, 1, 0.95, true, false)
-				for _, f in ipairs(SLICES) do
-					local x = CREST * f
-					local sy = w.oy + math.min(waterAt(w, x), w.h)
-					local sb = math.min(gy, sy)
-					if sy - sb > 0.3 then
-						local c = VecAdd(base, VecScale(dir, -x))
-						c[2] = (sy + sb) * 0.5
-						DrawSprite(client.wave, Transform(c, yaw), SEG * 1.08, sy - sb, 0.82, 0.9, 1, 0.75, true, false)
+				local full = math.abs(l - cl) <= FULL_DETAIL
+				-- the wall stands on the ground and reaches the flat crest height; none where the ground is higher
+				local topY = w.oy + w.h
+				local bottomY = math.min(gy, topY)
+				local hh = topY - bottomY
+				local base = Vec(w.ox + w.s * w.dx + l * lat[1], bottomY, w.oz + w.s * w.dz + l * lat[3])
+				if hh > 0.3 then
+					local fh = hh / LEAN_COS
+					local fc = VecAdd(base, VecAdd(Vec(0, hh * 0.5, 0), VecScale(dir, hh * 0.5 * LEAN_TAN)))
+					put(client.wave, Transform(fc, QuatRotateQuat(yaw, QuatEuler(-LEAN, 0, 0))), SEG * 1.08, fh, 1, 1, 1, 0.95)
+					if full then
+						for _, f in ipairs(SLICES) do
+							local x = CREST * f
+							local sy = w.oy + math.min(waterAt(w, x), w.h)
+							local sb = math.min(gy, sy)
+							if sy - sb > 0.3 then
+								local c = VecAdd(base, VecScale(dir, -x))
+								c[2] = (sy + sb) * 0.5
+								put(client.wave, Transform(c, yaw), SEG * 1.08, sy - sb, 0.82, 0.9, 1, 0.75)
+							end
+						end
+					end
+					local backL = CREST * 1.2
+					local by = math.max(w.oy + math.min(waterAt(w, backL), w.h), bottomY)
+					local dy = topY - by
+					if dy > 0.2 then
+						local mid = VecAdd(Vec(base[1], (topY + by) * 0.5, base[3]), VecScale(dir, -backL * 0.5))
+						local tilt = math.deg(math.atan2(backL, dy))
+						put(client.flood, Transform(mid, QuatRotateQuat(yaw, QuatEuler(-tilt, 0, 0))), SEG * 1.05, math.sqrt(backL * backL + dy * dy), 1, 1, 1, 0.85)
+					end
+					local top = Vec(base[1], topY, base[3])
+					local lip = VecAdd(top, VecScale(dir, hh * LEAN_TAN))
+					put(client.foam, Transform(lip, QuatRotateQuat(yaw, QuatEuler(-70, 0, 0))), SEG * 1.3, w.h * 0.5 + 1, 1, 1, 1, 0.9)
+					if full then put(client.foam, Transform(top, QuatLookAt(top, cam.pos)), SEG * 1.4, w.h * 0.3 + 1, 1, 1, 1, 0.9) end
+				end
+				if w.phase == "wave" then
+					-- the surge: fast foamy water from the foot of the back slope down to the flood level,
+					-- in tilted pieces that follow the height profile (it was one flat sheet)
+					local x0, x1 = CREST * 1.2 - 0.5, CREST + SURGE + 1
+					local n = full and 2 or 1
+					for i = 0, n - 1 do
+						local xa, xb = x0 + (x1 - x0) * i / n, x0 + (x1 - x0) * (i + 1) / n
+						local ha, hb = math.min(waterAt(w, xa), w.h), math.min(waterAt(w, xb), w.h)
+						local xc = (xa + xb) * 0.5
+						local sy, sga, sgl = swell(w.s - xc, l, client.clock, 0.25)
+						local p = wpos(w, w.s - xc, l, w.oy + (ha + hb) * 0.5 + sy)
+						local ga = (ha - hb) / (xb - xa) + sga
+						put(client.flood, Transform(p, tilted(flat, ga, sgl)), SEG * 1.12, math.sqrt((xb - xa) ^ 2 + (ha - hb) ^ 2) * 1.05, SURGE_C[1], SURGE_C[2], SURGE_C[3], 0.85)
+					end
+					if full and hh > 0.3 then
+						-- a bead of foam where the falling water hits the surge
+						local xb = CREST * 1.2 + 0.5
+						local p = wpos(w, w.s - xb, l, w.oy + math.min(waterAt(w, xb), w.h) + 0.35)
+						put(client.foam, Transform(p, QuatRotateQuat(yaw, QuatEuler(-35, 0, 0))), SEG * 1.25, 1.8, 1, 1, 1, 0.9)
 					end
 				end
-				local backL = CREST * 1.2
-				local by = math.max(w.oy + math.min(waterAt(w, backL), w.h), bottomY)
-				local dy = topY - by
-				if dy > 0.2 then
-					local mid = VecAdd(Vec(base[1], (topY + by) * 0.5, base[3]), VecScale(dir, -backL * 0.5))
-					local tilt = math.deg(math.atan2(backL, dy))
-					DrawSprite(client.flood, Transform(mid, QuatRotateQuat(yaw, QuatEuler(-tilt, 0, 0))), SEG * 1.05, math.sqrt(backL * backL + dy * dy), 1, 1, 1, 0.85, true, false)
-				end
-				local top = Vec(base[1], topY, base[3])
-				local lip = VecAdd(top, VecScale(dir, hh * LEAN_TAN))
-				DrawSprite(client.foam, Transform(lip, QuatRotateQuat(yaw, QuatEuler(-70, 0, 0))), SEG * 1.3, w.h * 0.5 + 1, 1, 1, 1, 0.9, true, false)
-				DrawSprite(client.foam, Transform(top, QuatLookAt(top, cam.pos)), SEG * 1.4, w.h * 0.3 + 1, 1, 1, 1, 0.9, true, false)
-			end
-			if w.phase == "wave" then
-				local fp = VecAdd(base, VecScale(dir, -(CREST + SURGE) * 0.5))
-				fp[2] = w.oy + math.max(w.flood, 0.2 * w.h)
-				DrawSprite(client.flood, Transform(fp, flat), SEG * 1.05, CREST + SURGE, 1, 1, 1, 0.8, true, false)
-			end
 			end
 		end
 	end
+	return rays
+end
+
+-- the flood behind the surge (and while it drains): a body of water around the camera.
+-- Near: 6 x 6 tiles of 10 m, each a deep dark layer and a light surface tilted by the swell, both
+-- drifting with the current; a middle layer of 20 m tiles drifting at half speed in between (parallax);
+-- far: big sheets out to 150 m; foam and debris streaks along the current; side walls with a foam
+-- bead where the zone ends, when the camera is near that edge
+local function drawFlood(w, cam, ca, cl, dir, lat, flat, rays, dt)
+	local level, u
+	if w.phase == "recede" then
+		local k = 1 - clamp(w.t / RECEDE_TIME, 0, 1)
+		level, u = w.flood * k, -0.35 * w.speed * k
+	elseif w.phase == "wave" then
+		level, u = w.flood, 0.15 * w.speed
+	else
+		return rays
+	end
+	client.flow = client.flow + u * dt
+	if level <= 0.02 then return rays end
+	local aMin = -START_DIST
+	local aMax = (w.phase == "wave") and (w.s - (CREST + SURGE)) or w.s
+	if aMax - aMin < 0.5 then return rays end
+	local L = w.oy + level
+	local t = client.clock
+	local amp = clamp(0.15 + 0.12 * level, 0.12, 0.6)
+	local dDeep = clamp(0.5 * level, 0.35, 0.9)
+
+	-- near field
+	local ph = client.flow % NEAR_TILE
+	local i0 = math.floor((ca - ph) / NEAR_TILE) - NEAR_N / 2 + 1
+	local j0 = math.floor(cl / NEAR_TILE) - NEAR_N / 2 + 1
+	local nA0, nL0 = i0 * NEAR_TILE + ph, j0 * NEAR_TILE
+	local nA1, nL1 = nA0 + NEAR_N * NEAR_TILE, nL0 + NEAR_N * NEAR_TILE
+	for i = 0, NEAR_N - 1 do
+		for j = 0, NEAR_N - 1 do
+			local a0, a1, l0, l1 = clipZone(nA0 + i * NEAR_TILE, nA0 + (i + 1) * NEAR_TILE, nL0 + j * NEAR_TILE, nL0 + (j + 1) * NEAR_TILE, aMin, aMax)
+			if a0 then
+				local ac, lc, la, ll = (a0 + a1) * 0.5, (l0 + l1) * 0.5, a1 - a0, l1 - l0
+				put(client.deep, Transform(wpos(w, ac, lc, L - dDeep), flat), ll * 1.4, la * 1.4, DEEP_C[1], DEEP_C[2], DEEP_C[3], 0.85, true)
+				local sy, ga, gl = swell(ac, lc, t, amp)
+				put(client.flood, Transform(wpos(w, ac, lc, L + sy), tilted(flat, ga, gl)), ll * 1.3, la * 1.3, TOP_C[1], TOP_C[2], TOP_C[3], 0.8, true)
+			end
+		end
+	end
+	-- middle layer: coarser, half a tile off and slower, so the depth shows when you move
+	local ph2 = (client.flow * 0.5) % MID_TILE
+	local mi0 = math.floor((ca - ph2) / MID_TILE) - 1
+	local mj0 = math.floor(cl / MID_TILE) - 1
+	for i = 0, MID_N - 1 do
+		for j = 0, MID_N - 1 do
+			local a = (mi0 + i) * MID_TILE + ph2 + MID_TILE * 0.5
+			local l = (mj0 + j) * MID_TILE + MID_TILE * 0.5
+			local a0, a1, l0, l1 = clipZone(a, a + MID_TILE, l, l + MID_TILE, aMin, aMax)
+			if a0 then
+				put(client.deep, Transform(wpos(w, (a0 + a1) * 0.5, (l0 + l1) * 0.5, L - dDeep * 0.5), flat), (l1 - l0) * 1.3, (a1 - a0) * 1.3, MID_C[1], MID_C[2], MID_C[3], 0.45, true)
+			end
+		end
+	end
+	-- foam and debris streaks: fixed in the water, drifting with it, wrapped into a window around the camera
+	local wa0, wl0 = ca - STREAK_A, cl - STREAK_L
+	local aTop = (w.phase == "wave") and (w.s - CREST * 1.2 - 2) or aMax
+	for i = 1, STREAKS do
+		local h1, h2, h3 = hash(i, 1), hash(i, 2), hash(i, 3)
+		local a = wa0 + ((h1 * 2 * STREAK_A + client.flow * (0.8 + 0.4 * h3) - wa0) % (2 * STREAK_A))
+		local l = wl0 + ((h2 * 2 * STREAK_L - wl0) % (2 * STREAK_L))
+		if a > aMin and a < aTop and math.abs(l) < HALF_WIDTH - 1 then
+			local hgt = level
+			if w.phase == "wave" then hgt = math.min(waterAt(w, w.s - a), w.h) end
+			local sy, ga, gl = swell(a, l, t, amp)
+			local fade = clamp(math.min(a - wa0, wa0 + 2 * STREAK_A - a) / 6, 0, 1)
+			local p = wpos(w, a, l, w.oy + hgt + sy + 0.06)
+			if h3 < 0.3 then
+				put(client.streak, Transform(p, tilted(flat, ga, gl)), 0.7, 3 + 2 * h1, 0.33, 0.25, 0.17, 0.85 * fade, true)
+			else
+				put(client.streak, Transform(p, tilted(flat, ga, gl)), 0.8 + 0.8 * h2, 5 + 6 * h3, 0.95, 0.97, 0.97, 0.75 * fade, true)
+			end
+		end
+	end
+	-- side walls where the flooded zone ends, so the flood has a side, not just a top
+	local side = cl >= 0 and 1 or -1
+	if HALF_WIDTH - math.abs(cl) <= WALL_NEAR then
+		local lw = side * HALF_WIDTH
+		local k0 = math.floor(ca / WALL_PIECE) - WALL_N / 2
+		for k = k0, k0 + WALL_N - 1 do
+			local lo, hi = math.max(k * WALL_PIECE, aMin), math.min((k + 1) * WALL_PIECE, aMax)
+			if hi - lo > 0.5 then
+				local gy
+				gy, rays = sideGround(w, side, k, rays)
+				if gy and gy < L - 0.1 then
+					local bottom = gy - 0.3
+					local mid = (lo + hi) * 0.5
+					local p = wpos(w, mid, lw, (L + bottom) * 0.5)
+					local rot = QuatLookAt(p, VecAdd(p, VecScale(lat, side)))
+					put(client.wall, Transform(p, rot), hi - lo + 0.3, L - bottom, 0.9, 0.95, 0.95, 0.9, true)
+					put(client.foam, Transform(wpos(w, mid, lw + side * 0.2, L + 0.15), QuatRotateQuat(rot, QuatEuler(-50, 0, 0))), hi - lo + 0.6, 1.3, 1, 1, 1, 0.85, true)
+				end
+			end
+		end
+	end
+	-- far sheets: the ring between the near field and 150 m, in pieces of at most 100 m
+	local fA0, fA1, fL0, fL1 = ca - FAR_HALF, ca + FAR_HALF, cl - FAR_HALF, cl + FAR_HALF
+	local strips = {
+		{ fA0, nA0, fL0, fL1 }, { nA1, fA1, fL0, fL1 },
+		{ nA0, nA1, fL0, nL0 }, { nA0, nA1, nL1, fL1 },
+	}
+	for _, sp in ipairs(strips) do
+		local a0, a1, l0, l1 = clipZone(sp[1], sp[2], sp[3], sp[4], aMin, aMax)
+		if a0 then
+			local na, nl = math.ceil((a1 - a0) / FAR_CHUNK), math.ceil((l1 - l0) / FAR_CHUNK)
+			local da, dl = (a1 - a0) / na, (l1 - l0) / nl
+			for i = 0, na - 1 do
+				for j = 0, nl - 1 do
+					local ac, lc = a0 + (i + 0.5) * da, l0 + (j + 0.5) * dl
+					put(client.deep, Transform(wpos(w, ac, lc, L - dDeep), flat), dl * 1.35, da * 1.35, DEEP_C[1], DEEP_C[2], DEEP_C[3], 0.85, true)
+					local sy = swell(ac, lc, t, amp)
+					put(client.flood, Transform(wpos(w, ac, lc, L + sy * 0.5), flat), dl * 1.3, da * 1.3, TOP_C[1], TOP_C[2], TOP_C[3], 0.7, true)
+				end
+			end
+		end
+	end
+	return rays
+end
+
+-- the wall of the wave and the flood behind it: depth-tested sprites, at most SPRITE_CAP per frame
+-- (FLOOD_CAP of them for the flood), RAYS_PER_FRAME ground probes
+function client.render(dt)
+	local w = shared.ts
+	client.ns, client.nf = 0, 0
+	if w.phase == "idle" then return end
+	client.clock = client.clock + dt
+	local cam, ca, cl = camFrame(w)
+	local dir = Vec(w.dx, 0, w.dz)
+	local lat = Vec(-w.dz, 0, w.dx)
+	local yaw = QuatLookAt(Vec(0, 0, 0), dir)
+	local flat = QuatRotateQuat(yaw, QuatEuler(-90, 0, 0))
+	local rays = RAYS_PER_FRAME
+	if w.phase ~= "recede" and w.h >= 0.2 then rays = drawFront(w, cam, cl, dir, lat, yaw, flat, rays) end
+	drawFlood(w, cam, ca, cl, dir, lat, flat, rays, dt)
 end
 
 -- foam and spray on the crest near the camera (at most 30 particles per step)

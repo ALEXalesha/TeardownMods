@@ -51,7 +51,7 @@ function readSettings()
 		duration = clamp(getF("duration", 45), 20, 120),
 		fire = getB("fire", true),
 		ash = getB("ash", true),
-		debug = getB("debug", true),
+		debug = getB("debugline", false),   -- hidden diagnostics, off by default since 10.10 (new key: old saves may hold debug=true)
 	}
 end
 

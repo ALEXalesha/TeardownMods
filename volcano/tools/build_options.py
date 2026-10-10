@@ -12,7 +12,7 @@ ROWS = [
     {"kind": "slider", "key": "strength", "label": ("Eruption strength", "Сила извержения"), "min": 0.5, "max": 2, "default": 1.0, "fmt": ("x%.1f", "x%.1f"), "step": 0.1},
     {"kind": "slider", "key": "duration", "label": ("Eruption length", "Длительность извержения"), "min": 20, "max": 120, "default": 45.0, "fmt": ("%.0f s", "%.0f с"), "step": 5},
     {"kind": "choice", "key": "fire", "label": ("Fires", "Пожары"), "default": True, "choices": YN},
-    {"kind": "choice", "key": "debug", "label": ("Debug line (for testing)", "Строка отладки (для проверки)"), "default": True, "choices": YN},
+    {"kind": "choice", "key": "debugline", "label": ("Debug line (for testing)", "Строка отладки (для проверки)"), "default": False, "choices": YN},
     {"kind": "choice", "key": "ash", "label": ("Ash fall", "Пепел"), "default": True, "choices": YN},
 ]
 

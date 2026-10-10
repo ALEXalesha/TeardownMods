@@ -10,6 +10,7 @@ T.budget("MakeHole", 24)
 T.budget("QueryRaycast", 30 + 6 + 2)
 T.budget("SpawnParticle", 30)
 T.budget("SetProperty", 8)
+T.budget("DrawSprite", 280)
 
 -- player at the origin looking along -z: the wave comes from -z and travels towards +z
 H.addPlayer(1, V(0, 0, 0))
@@ -83,7 +84,7 @@ T.check(H.P(1).pos[3] - pp0[3] > 5, string.format("the player is carried along (
 T.check(H.bodies[crate].pos[3] - c0[3] > 10, string.format("a crate is carried away (%.1f m)", H.bodies[crate].pos[3] - c0[3]))
 T.check(H.bodies[car].pos[3] - (-50) > 3, string.format("a 1.2 t car is carried away (%.1f m)", H.bodies[car].pos[3] + 50))
 T.check(math.abs(H.bodies[roofCrate].pos[3] + 37) < 0.05, "a crate up on a 25 m roof stays dry")
-T.check(spritesMax > 10 and spritesMax <= 133 and badDepth == 0, string.format("the wall is drawn with depth-tested sprites (max %d per frame, <= 7 per segment)", spritesMax))
+T.check(spritesMax > 10 and spritesMax <= 280 and badDepth == 0, string.format("the wall and the flood are drawn with depth-tested sprites (max %d per frame, cap 280)", spritesMax))
 T.check(waveDepth >= 6, string.format("the wave has a body behind its face (%.1f m deep, need >= 6)", waveDepth))
 T.check(backSlope > 0, "a back slope runs from the crest down to the flood")
 T.check(T.loopFrames("roar.ogg") > 100, "roar of the wave")

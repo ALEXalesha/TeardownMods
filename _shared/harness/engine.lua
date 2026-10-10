@@ -1105,10 +1105,11 @@ end
 A.SetPostProcessingDefault = function() H.post = { saturation = { 1 }, colorbalance = { 1, 1, 1 }, brightness = { 1 }, gamma = { 1 }, bloom = { 1 } } end
 A.SetEnvironmentDefault = function() end
 H.spritePaths = {}
-H.sprites = {}   -- this frame: { path, w, h, a, depthTest, additive }
+H.sprites = {}   -- this frame: { path, pos, rot, w, h, r, g, b, a, depthTest, additive, fog }
 A.LoadSprite = function(path) checkFile(path, "LoadSprite"); local h = newHandle(); H.spritePaths[h] = path; return h end
 A.DrawSprite = function(h, t, w, hh, r, g, b, a, depthTest, additive, fog)
-	H.sprites[#H.sprites + 1] = { path = H.spritePaths[h] or "?", pos = t and t.pos, w = w, h = hh, a = a or 1, depthTest = depthTest == true, additive = additive == true }
+	H.sprites[#H.sprites + 1] = { path = H.spritePaths[h] or "?", pos = t and t.pos, rot = t and t.rot, w = w, h = hh,
+		r = r or 1, g = g or 1, b = b or 1, a = a or 1, depthTest = depthTest == true, additive = additive == true, fog = fog == true }
 end
 A.DrawLine = function() end
 A.DebugLine = function() end

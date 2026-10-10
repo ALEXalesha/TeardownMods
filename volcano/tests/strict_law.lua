@@ -22,6 +22,7 @@ local fwd = A.TransformToParentVec(eye, V(0, 0, -1))
 local tHit = -eye.pos[2] / fwd[2]
 local click = V(eye.pos[1] + fwd[1] * tHit, 0, eye.pos[3] + fwd[3] * tHit)
 
+H.reg["savegame.mod.debugline"] = true   -- the debug line is off by default since 10.10; this law reads it
 T.load("main.lua", "main")
 T.init("main")
 T.frames(2)
@@ -50,7 +51,7 @@ T.runUntil(function() return srv().v and srv().v.lastLaunch ~= nil end, 2400)
 local lp = srv().v.lastLaunch
 local bo = math.sqrt((lp[1] - cx) ^ 2 + (lp[3] - cz) ^ 2)
 T.check(bo < 0.5, string.format("bombs leave from the cone's crater (%.2f m off)", bo))
-T.check(T.hasText("volcano: click"), "debug line on screen by default")
+T.check(T.hasText("volcano: click"), "debug line on screen (switched on for this law)")
 -- every layer at its own height, the cone at full height
 local okLayers = true
 local detail = {}

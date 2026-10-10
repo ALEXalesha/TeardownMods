@@ -15,7 +15,7 @@ local ROWS = {
 	{ kind = "slider", key = "strength", label = { "Eruption strength", "Сила извержения" }, default = 1.0, min = 0.5, max = 2, fmt = { "x%.1f", "x%.1f" }, int = false, step = 0.1 },
 	{ kind = "slider", key = "duration", label = { "Eruption length", "Длительность извержения" }, default = 45.0, min = 20, max = 120, fmt = { "%.0f s", "%.0f с" }, int = false, step = 5 },
 	{ kind = "choice", key = "fire", label = { "Fires", "Пожары" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
-	{ kind = "choice", key = "debug", label = { "Debug line (for testing)", "Строка отладки (для проверки)" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
+	{ kind = "choice", key = "debugline", label = { "Debug line (for testing)", "Строка отладки (для проверки)" }, default = false, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 	{ kind = "choice", key = "ash", label = { "Ash fall", "Пепел" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 }
 

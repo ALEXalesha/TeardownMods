@@ -4,6 +4,10 @@
 
 ## English
 
+### 2026-10-10 (later) - catapult assembles again
+
+- **Catapult**: it no longer comes out as a bare frame that vanishes with "aim at open ground". The frame and the arm were sent to the game as two separate XML roots and the game created only the first; now they are one prefab document, like the game's own spawns (the six crates too). If an assembly still fails, the message says that the catapult did not assemble and was removed, not that the ground is bad; the reason goes to the game's log. The debug line is off by default (option "Debug line (for testing)").
+
 ### 2026-10-10 - volcano debug line hidden, tsunami flood with depth
 
 - **Volcano**: the yellow debug line is gone from the screen (the cone stands right, Alexey's test of 10.10). It is still there as hidden diagnostics: "Debug line (for testing)" in the mod's options, off by default, under a new key so an old saved setting does not bring it back.
@@ -25,6 +29,10 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 10.10.2026 (позже) - катапульта снова собирается
+
+- **Катапульта**: больше не появляется одной станиной, которая исчезает с надписью «наведите на открытую землю». Станина и рычаг уходили в игру двумя отдельными корнями XML, и игра создавала только первый; теперь это один документ-префаб, как у самой игры (шесть ящиков тоже). Если сборка всё же не удастся, надпись скажет, что катапульта не собралась и убрана, а не что земля плохая; причина пишется в журнал игры. Строка отладки по умолчанию выключена (настройка «Строка отладки (для проверки)»).
 
 ### 10.10.2026 - строка отладки вулкана скрыта, затопление цунами с глубиной
 

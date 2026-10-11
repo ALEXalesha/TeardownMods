@@ -15,7 +15,7 @@ local ROWS = {
 	{ kind = "choice", key = "reload", label = { "Reload automatically", "Заряжать автоматически" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 	{ kind = "slider", key = "damage", label = { "Impact damage", "Сила попадания" }, default = 1.0, min = 0.25, max = 2, fmt = { "x%.2f", "x%.2f" }, int = false, step = 0.05 },
 	{ kind = "choice", key = "falldamage", label = { "Fall damage for a launched player", "Урон от падения для запущенного игрока" }, default = false, choices = { { false, "Off", "Выкл" }, { true, "On", "Вкл" } } },
-	{ kind = "choice", key = "debug", label = { "Debug line (for testing)", "Строка отладки (для проверки)" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
+	{ kind = "choice", key = "debugline", label = { "Debug line (for testing)", "Строка отладки (для проверки)" }, default = false, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 	{ kind = "choice", key = "arc", label = { "Arc preview", "Предпросмотр траектории" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 }
 

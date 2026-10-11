@@ -11,7 +11,7 @@ local STD = {
 	math = math, string = string, table = table, pairs = pairs, ipairs = ipairs, type = type,
 	tostring = tostring, tonumber = tonumber, select = select, unpack = unpack, pcall = pcall,
 	xpcall = xpcall, error = error, assert = assert, next = next, rawget = rawget, rawset = rawset,
-	rawequal = rawequal, setmetatable = setmetatable, getmetatable = getmetatable, print = function(...) end,
+	rawequal = rawequal, setmetatable = setmetatable, getmetatable = getmetatable, print = function(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring((select(i, ...))) end H.printed[#H.printed + 1] = table.concat(t, "	") end,
 	os = { time = os.time, clock = os.clock, date = os.date }, coroutine = coroutine, _VERSION = _VERSION,
 }
 

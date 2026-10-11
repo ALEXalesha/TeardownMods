@@ -56,8 +56,17 @@ function readSettings()
 		damage = clamp(getF("damage", 1), 0.25, 2),
 		falldamage = getB("falldamage", false),
 		arc = getB("arc", true),
-		debug = getB("debug", true),
+		debug = getB("debugline", false),   -- hidden diagnostics, off by default since 10.10 (new key: old saves may hold debug=true)
 	}
+end
+
+-- Several bodies in one Spawn must be ONE XML document. The game spawns only the first top-level
+-- element of a text: in-game 10.10 the catapult (static frame body + dynamic arm body side by side)
+-- came out as the frame alone, "arm, bucket not found among 1 bodies / 2 shapes". The game's own
+-- scripts wrap their spawn texts like this (data/script/mp/lib/tools.lua); the probe uses the same
+-- wrapper, so the pivot it measures is the pivot of the real assembly.
+local function prefabXml(name, inner)
+	return "<prefab version='1.2.0'><group name='" .. name .. "' pos='0.0 0.0 0.0' rot='0.0 0.0 0.0'>" .. inner .. "</group></prefab>"
 end
 
 function launchSpeed(power) return V_MIN + (V_MAX - V_MIN) * clamp(power, 0, 1) end
@@ -82,7 +91,7 @@ end
 -- no valid bounds yet in the real game)
 function server.startProbe(at)
 	server.probe = { at = at, tries = 0,
-		ents = Spawn("<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>", Transform(at), true) }
+		ents = Spawn(prefabXml("catapult_probe", "<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>"), Transform(at), true) }
 end
 
 -- returns the calibration once it is known: measured, or after 20 ticks the centre-pivot
@@ -145,7 +154,7 @@ local function prefab(calib)
 	local bucketPos = partPos(calib, "bucket", VecAdd(T, Vec(0, 0.3, 0)), id)
 	local weightPos = partPos(calib, "weight", VecSub(P, VecScale(u, L2)), tilt)
 	local tag = "tags='catapult_part'"
-	return "<body dynamic='false' tags='catapult catapult_part interact=Fire'>" ..
+	return prefabXml("catapult", "<body dynamic='false' tags='catapult catapult_part interact=Fire'>" ..
 		"<vox file='MOD/vox/frame.vox' scale='" .. SCALE .. "' pos='" .. fmt3(framePos) .. "' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/axle.vox' scale='" .. SCALE .. "' pos='" .. fmt3(axlePos) .. "' " .. tag .. "/>" ..
 		"</body>" ..
@@ -155,7 +164,7 @@ local function prefab(calib)
 		"<vox file='MOD/vox/beam.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(bucketPos) .. "' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
-		"</body>"
+		"</body>")
 end
 
 ---------------------------------------------------------------------------
@@ -259,9 +268,11 @@ function server.tick(dt)
 end
 
 -- LMB: find the ground, then (over the next ticks) measure the pivot and assemble. Every refusal
--- is shown in the debug line (shared.cp.reason).
+-- tells the player why in plain words (no ground / did not assemble / too many), and the technical
+-- reason goes to the game's log (print) and to the debug line, which is off by default.
 local function refuse(reason, kind)
 	shared.cp.reason = reason
+	print("catapult: " .. reason)
 	message(kind or "aim")
 end
 
@@ -348,7 +359,7 @@ function server.stepPending()
 		-- never leave half a catapult behind that nothing can remove
 		for i = 1, #pd.ents do if GetEntityType(pd.ents[i]) == "body" then Delete(pd.ents[i]) end end
 		server.pending = nil
-		refuse("refused: " .. table.concat(missing, ", ") .. " not found among " .. #bodies .. " bodies / " .. #shapes .. " shapes after 30 ticks")
+		refuse("refused: " .. table.concat(missing, ", ") .. " not found among " .. #bodies .. " bodies / " .. #shapes .. " shapes after 30 ticks", "assembly")
 		return
 	end
 	c.id = server.nextId
@@ -420,7 +431,7 @@ function server.load(c, kind)
 		for i = 1, #slots do
 			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. slots[i][1] .. " " .. (0.05 + slots[i][2] + server.calib.f[2] * 0.9) .. " " .. slots[i][3] .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
 		end
-		ents = Spawn(xml, Transform(floor, rot))
+		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
 	elseif name == "car" then
 		trimAmmo(1)
 		-- the game's own small car if its prefab can be spawned, else the mod's car body
@@ -722,7 +733,11 @@ local MESSAGES = {
 	cleared = { "Catapults removed", "Катапульты убраны" },
 	loaded = { "The bucket is not empty", "Ковш уже занят" },
 	placed = { "Catapult placed", "Катапульта поставлена" },
+	-- in-game 10.10 a failed assembly said "aim at open ground": the ground was fine
+	assembly = { "The catapult did not assemble (the game did not create all its parts) - removed, try again",
+		"Катапульта не собралась (игра создала не все её части) - убрана, попробуйте ещё раз" },
 }
+local MESSAGE_TIME = { assembly = 6 }
 local AMMO_NAMES = { { "Boulder", "Валун" }, { "Explosive barrel", "Бочка со взрывчаткой" }, { "Car", "Машина" }, { "Crates", "Ящики" } }
 
 local function selectCat()
@@ -756,7 +771,7 @@ function client.tick(dt)
 	if cp.mn ~= seen.mn then
 		seen.mn = cp.mn
 		local m = MESSAGES[cp.msg]
-		if m then client.msg, client.msgT = tr(m[1], m[2]), 2 end
+		if m then client.msg, client.msgT = tr(m[1], m[2]), MESSAGE_TIME[cp.msg] or 2 end
 	end
 	client.msgT = math.max(0, client.msgT - dt)
 	for i = 1, math.min(#cp.flying, 3) do

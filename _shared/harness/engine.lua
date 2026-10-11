@@ -481,8 +481,8 @@ end
 
 local function raycast(origin, dir, maxDist)
 	local bestT, bestN, bestS = nil, nil, 0
-	-- ground plane y=0
-	if dir[2] < -1e-6 and origin[2] >= 0 then
+	-- ground plane y=0 (H.noGround: none, e.g. to test "no ground here")
+	if dir[2] < -1e-6 and origin[2] >= 0 and not H.noGround then
 		local t = -origin[2] / dir[2]
 		if t <= maxDist then bestT, bestN, bestS = t, V(0, 1, 0), H.groundShape end
 	end
@@ -858,18 +858,61 @@ function H.attrTransform(attrs)
 	if rs then local a, b, c = rs:match("(%S+)%s+(%S+)%s+(%S+)") if a then rot = A.QuatEuler(tonumber(a), tonumber(b), tonumber(c)) end end
 	return A.Transform(pos, rot)
 end
+-- top-level elements of an XML text: { { tag, from, to }, ... } (declarations and comments skipped)
+function H.xmlRoots(content)
+	local s = content:gsub("<%?.-%?>", ""):gsub("<!%-%-.-%-%->", "")
+	local roots, depth, pos = {}, 0, 1
+	while true do
+		local a, b, close, tag, rest = s:find("<(/?)([%w_]+)([^>]*)>", pos)
+		if not a then break end
+		if close == "/" then
+			depth = depth - 1
+			if depth == 0 and roots[#roots] then roots[#roots].to = b end
+		else
+			if depth == 0 then roots[#roots + 1] = { tag = tag, from = a, to = b } end
+			if rest:sub(-1) ~= "/" then depth = depth + 1 end
+		end
+		pos = b + 1
+	end
+	return roots, s
+end
+
 A.Spawn = function(xml, transform, allowStatic, jointExisting)
 	local content = xml
 	if not xml:find("<") then
 		if not checkFile(xml, "Spawn") then return {} end
 		content = H.readFile((resolvePath(xml)))
 	end
+	-- An XML text is one document with one root element. In-game 10.10 the catapult's string of two
+	-- top-level <body> elements came out as exactly the first one (1 body / 2 shapes: frame and axle,
+	-- no arm); the game's own scripts always wrap several bodies in <prefab><group>...</group></prefab>
+	-- (data/script/mp/lib/tools.lua). Modelled the same way, and reported.
+	local roots, clean = H.xmlRoots(content)
+	if #roots > 1 then
+		err("Spawn: the XML has " .. #roots .. " top-level elements (" .. roots[1].tag .. ", " .. roots[2].tag ..
+			", ...); the game spawns only the first - wrap them in <prefab><group>...</group></prefab>")
+		content = clean:sub(roots[1].from, roots[1].to)
+	end
+	-- the mods' own texts only (prefab files like the game's cars keep their groups, unmodelled as before)
+	for attrs in (xml:find("<") and content or ""):gmatch("<group([^>]*)>") do
+		local ps, rs = parseAttr(attrs, "pos"), parseAttr(attrs, "rot")
+		local function zero(v) if not v then return true end for n in v:gmatch("%S+") do if math.abs(tonumber(n) or 0) > 1e-9 then return false end end return true end
+		if not (zero(ps) and zero(rs)) then err("Spawn: a <group> with a pos/rot is not modelled by the harness (use pos='0 0 0' rot='0 0 0')") end
+	end
 	local out = {}
 	local cur = nil
 	local lastVox = nil
-	-- every <body> creates a body; every <vox>/<voxbox> a shape
+	local nBodies, skipping = 0, false
+	-- every <body> creates a body; every <vox>/<voxbox> a shape. H.spawnModel.maxBodies: a partial
+	-- spawn (only the first n bodies come out), to exercise what a mod does when parts are missing
 	for tag, attrs in content:gmatch("<(%w+)([^>]*)>") do
 		if tag == "body" then
+			nBodies = nBodies + 1
+			skipping = H.spawnModel and H.spawnModel.maxBodies and nBodies > H.spawnModel.maxBodies or false
+		end
+		if skipping then
+			-- this body and what it holds are not created
+		elseif tag == "body" then
 			local dyn = parseAttr(attrs, "dynamic")
 			local bt = A.TransformToParentTransform(transform, H.attrTransform(attrs))
 			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
@@ -1105,6 +1148,7 @@ end
 A.SetPostProcessingDefault = function() H.post = { saturation = { 1 }, colorbalance = { 1, 1, 1 }, brightness = { 1 }, gamma = { 1 }, bloom = { 1 } } end
 A.SetEnvironmentDefault = function() end
 H.spritePaths = {}
+H.printed = {}   -- what mod scripts print() (the game writes it to its log)
 H.sprites = {}   -- this frame: { path, pos, rot, w, h, r, g, b, a, depthTest, additive, fog }
 A.LoadSprite = function(path) checkFile(path, "LoadSprite"); local h = newHandle(); H.spritePaths[h] = path; return h end
 A.DrawSprite = function(h, t, w, hh, r, g, b, a, depthTest, additive, fog)

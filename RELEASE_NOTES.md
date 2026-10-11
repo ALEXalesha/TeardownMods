@@ -4,6 +4,10 @@
 
 ## English
 
+### 2026-10-11 - catapult arm swings, the load stays in the bucket
+
+- **Catapult**: the arm did not move and part of the load was out of sight. The 14.4 m beam ran straight through the axle: the hinge sat in three shapes at once and the moving beam jammed in the fixed axle. Now the beam is two pieces that start at the faces of a bigger hub, and only the hub touches the axle. The load was held in the bucket towards a point read in the very tick it appeared, when the game does not know a new body's centre yet: crates and boulders were pulled into the bucket floor and into each other. Now each one is held where it was put. The debug line (options, "Debug line") now shows the state, what the hinge joins, the arm's angle and how much of the load is in the bucket.
+
 ### 2026-10-10 (later) - catapult assembles again
 
 - **Catapult**: it no longer comes out as a bare frame that vanishes with "aim at open ground". The frame and the arm were sent to the game as two separate XML roots and the game created only the first; now they are one prefab document, like the game's own spawns (the six crates too). If an assembly still fails, the message says that the catapult did not assemble and was removed, not that the ground is bad; the reason goes to the game's log. The debug line is off by default (option "Debug line (for testing)").
@@ -29,6 +33,10 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 2026-10-11 - рычаг катапульты качается, груз лежит в ковше
+
+- **Катапульта**: рычаг не двигался, часть груза была не видна. Балка 14,4 м шла прямо сквозь ось: шарнир сидел сразу в трёх деталях, а подвижная балка застревала в неподвижной оси. Теперь балка из двух частей, они начинаются у граней большей ступицы, оси касается только ступица. Груз держался в ковше у точки, взятой в тот же тик, когда он появился, а игра в этот тик ещё не знает центр нового тела: ящики и валун тянуло в дно ковша и друг в друга. Теперь каждый держится там, куда положен. Строка отладки (настройки, «Строка отладки») показывает стадию, что соединяет шарнир, угол рычага и сколько груза в ковше.
 
 ### 10.10.2026 (позже) - катапульта снова собирается
 

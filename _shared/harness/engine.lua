@@ -634,7 +634,24 @@ A.GetBodyVehicle = function(h) return H.vehicleOf[h] or 0 end
 A.GetBodyAnimator = function(h) return 0 end
 A.GetBodyPlayer = function(h) local b = B(h); return b and b.player or 0 end
 A.GetBodyBounds = function(h) local b = B(h, "GetBodyBounds"); if not b then return V(), V() end return bodyAabb(b) end
-A.GetBodyCenterOfMass = function(h) return V() end
+-- H.spawnModel.com: the centre of the body's shapes (body space), and V(0, 0, 0) in the tick the body
+-- was spawned (mass data not ready yet - not known for the game, so a mod must not depend on it)
+A.GetBodyCenterOfMass = function(h)
+	local b = H.bodies[h]
+	if not (b and H.spawnModel and H.spawnModel.com) then return V() end
+	if b.spawnFrame and b.spawnFrame == H.frame then return V() end
+	local sum, n = V(0, 0, 0), 0
+	for _, sh in ipairs(b.shapes or {}) do
+		local s2 = H.shapes[sh]
+		if s2 and s2.size then
+			local vs = s2.voxelSize or 0.1
+			local lc = A.TransformToParentPoint(s2.realLocal or s2.local_, V(s2.size[1] * vs * 0.5, s2.size[2] * vs * 0.5, s2.size[3] * vs * 0.5))
+			sum = A.VecAdd(sum, lc) n = n + 1
+		end
+	end
+	if n == 0 then return V() end
+	return A.VecScale(sum, 1 / n)
+end
 A.IsBodyVisible = function() return true end
 A.IsBodyBroken = function() return false end
 A.IsBodyJointedToStatic = function(h) local b = B(h); return b ~= nil and b.jointedToStatic == true end

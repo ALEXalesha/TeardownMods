@@ -386,6 +386,17 @@ function server.stepPending()
 	message("placed")
 end
 
+-- a just-spawned body's transform is trusted only once all its shapes have real bounds
+function server.bodyReady(b)
+	local shapes = GetBodyShapes(b)
+	if not shapes or #shapes == 0 then return false end
+	for i = 1, #shapes do
+		local mn, mx = GetShapeBounds(shapes[i])
+		if not validBounds(mn, mx) then return false end
+	end
+	return true
+end
+
 -- bodies (and players) lying in the bucket
 function server.contents(c)
 	local b = server.bucketFloor(c)
@@ -433,18 +444,23 @@ function server.load(c, kind)
 	local floor = server.bucketFloor(c)
 	local rot = GetBodyTransform(c.frame).rot
 	local ents
+	local origins = {}             -- where each spawned body's origin was put (known from the spawn text)
 	if name == "boulder" then
 		trimAmmo(1)
-		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.8, 0)), rot))
+		origins[1] = VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.8, 0))
+		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(origins[1], rot))
 	elseif name == "barrel" then
 		trimAmmo(1)
-		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0)), rot))
+		origins[1] = VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0))
+		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(origins[1], rot))
 	elseif name == "crates" then
 		trimAmmo(6)
 		local xml = ""
 		local slots = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.95, -0.5 }, { 0, 0.95, 0.5 } }
 		for i = 1, #slots do
-			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. slots[i][1] .. " " .. (0.05 + slots[i][2] + server.calib.f[2] * 0.9) .. " " .. slots[i][3] .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
+			local sp = Vec(slots[i][1], 0.05 + slots[i][2] + server.calib.f[2] * 0.9, slots[i][3])
+			origins[i] = TransformToParentPoint(Transform(floor, rot), sp)
+			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. fmt3(sp) .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
 		end
 		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
 	elseif name == "car" then
@@ -460,14 +476,21 @@ function server.load(c, kind)
 	end
 	-- the loaded ammo is held gently where it lies in the bucket while the catapult stands
 	-- (aiming and turning cannot shake it out); anything else in the bucket rests freely
+	-- In-game 11.10 the hold point was read from GetBodyTransform / GetBodyCenterOfMass in the spawn
+	-- tick, when a just-spawned body's data is not ready: the load was pulled into the bucket floor and
+	-- into itself (half of the crates out of sight) and out of reach of the throw. Now each body's
+	-- origin is held at the point it was spawned at (known from the spawn text), or, for the game's
+	-- car with its wheels, at the point it is at once its shapes are ready.
 	local armT = GetBodyTransform(c.arm)
 	c.loadedBodies = {}
+	local nb = 0
 	for i = 1, #(ents or {}) do
 		if GetEntityType(ents[i]) == "body" then
 			local b = ents[i]
+			nb = nb + 1
 			server.ammo[#server.ammo + 1] = { body = b, kind = name, cat = c.id }
-			local com = TransformToParentPoint(GetBodyTransform(b), GetBodyCenterOfMass(b))
-			c.loadedBodies[#c.loadedBodies + 1] = { body = b, off = TransformToLocalPoint(armT, com) }
+			local o = origins[nb]
+			c.loadedBodies[#c.loadedBodies + 1] = { body = b, off = o and TransformToLocalPoint(armT, o) or nil }
 		end
 	end
 	c.loaded = name
@@ -480,10 +503,9 @@ function server.fire(c)
 	c.held = {}
 	for i = 1, #bodies do
 		local b = bodies[i]
-		local com = TransformToParentPoint(GetBodyTransform(b), GetBodyCenterOfMass(b))
 		local kind = "other"
 		for j = 1, #server.ammo do if server.ammo[j].body == b then kind = server.ammo[j].kind end end
-		c.held[#c.held + 1] = { body = b, off = TransformToLocalPoint(armT, com), kind = kind }
+		c.held[#c.held + 1] = { body = b, off = TransformToLocalPoint(armT, GetBodyTransform(b).pos), kind = kind }
 	end
 	c.heldPlayers = {}
 	for i = 1, #players do
@@ -562,13 +584,16 @@ function server.update(dt)
 			local armT = GetBodyTransform(c.arm)
 			for j = 1, #(c.loadedBodies or {}) do
 				local h = c.loadedBodies[j]
-				if IsHandleValid(h.body) then
-					local com = TransformToParentPoint(GetBodyTransform(h.body), GetBodyCenterOfMass(h.body))
-					ConstrainPosition(h.body, c.arm, com, TransformToParentPoint(armT, h.off), 4)
+				if IsHandleValid(h.body) and server.bodyReady(h.body) then
+					local bp = GetBodyTransform(h.body).pos
+					if not h.off then h.off = TransformToLocalPoint(armT, bp) end
+					ConstrainPosition(h.body, c.arm, bp, TransformToParentPoint(armT, h.off), 4)
 				end
 			end
 		elseif c.state == "swing" then
 			c.t = c.t + dt
+			c.dbgT = (c.dbgT or 0) - dt
+			if c.dbgT <= 0 then c.dbgT = 0.1 server.debugInfo(c) server.sync() end
 			local psi = server.psi(c)
 			-- the hinge's sign convention is unknown: if the arm goes the wrong way, reverse once
 			if not c.signChecked and c.t > 0.06 then
@@ -582,8 +607,8 @@ function server.update(dt)
 			for j = 1, #c.held do
 				local h = c.held[j]
 				if IsHandleValid(h.body) then
-					local com = TransformToParentPoint(GetBodyTransform(h.body), GetBodyCenterOfMass(h.body))
-					ConstrainPosition(h.body, c.arm, com, TransformToParentPoint(armT, h.off), 80)
+					local bp = GetBodyTransform(h.body).pos
+					ConstrainPosition(h.body, c.arm, bp, TransformToParentPoint(armT, h.off), 80)
 				end
 			end
 			for j = 1, #c.heldPlayers do
@@ -667,9 +692,20 @@ function server.debugInfo(c)
 	local ax = server.pivot(c)
 	local bk = server.bucketFloor(c)
 	local v = GetBodyVelocity(c.arm)
-	c.dbg = string.format("catapult: pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s",
-		cal.f[1], cal.f[2], cal.f[3], cal.measured and "" or " (default)", cal.zUp and "" or " y-up", base[2], fmn[2] - base[2], ax[2] - base[2], AXY,
-		bk[2] - base[2], (c.joint ~= 0 and not IsJointBroken(c.joint)) and "attached" or "BROKEN", VecLength(v))
+	-- what the hinge really joins (11.10: the arm did not move) and how much of the load lies in the bucket
+	local hinge = "none"
+	if c.joint ~= 0 then
+		local other = (c.hub ~= 0) and GetJointOtherShape(c.joint, c.hub) or 0
+		if IsJointBroken(c.joint) then hinge = "BROKEN"
+		elseif other == c.axle then hinge = "hub-axle"
+		elseif other == 0 then hinge = "hub-nothing"
+		elseif GetShapeBody(other) == c.arm then hinge = "hub-own arm!"
+		else hinge = "hub-other shape" end
+	end
+	local inBucket = #(server.contents(c))
+	c.dbg = string.format("catapult: %s | pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s, angle %.0f | load %d/%d in bucket",
+		c.state, cal.f[1], cal.f[2], cal.f[3], cal.measured and "" or " (default)", cal.zUp and "" or " y-up", base[2], fmn[2] - base[2], ax[2] - base[2], AXY,
+		bk[2] - base[2], hinge, VecLength(v), server.psi(c), inBucket, #(c.loadedBodies or {}))
 end
 
 -- client commands

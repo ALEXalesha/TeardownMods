@@ -74,7 +74,7 @@ function launchSpeed(power) return V_MIN + (V_MAX - V_MIN) * clamp(power, 0, 1) 
 -- Model sizes in MagicaVoxel order (x, y, z-up); turned into the game's shape axes by the
 -- calibration below.
 local MODELS = {
-	frame = { 26, 38, 32 }, axle = { 26, 4, 4 }, hub = { 4, 4, 4 }, beam = { 2, 48, 2 },
+	frame = { 26, 38, 32 }, axle = { 26, 4, 4 }, hub = { 6, 6, 6 }, beam_long = { 2, 30, 2 }, beam_short = { 2, 8, 2 },
 	bucket = { 9, 9, 5 }, weight = { 8, 8, 8 }, probe = { 2, 4, 6 },
 }
 
@@ -149,7 +149,13 @@ local function prefab(calib)
 	local framePos = partPos(calib, "frame", Vec(0, MODELS.frame[3] * 0.1 * SCALE * 0.5, 0), id)
 	local axlePos = partPos(calib, "axle", P, id)
 	local hubPos, hubPc = partPos(calib, "hub", P, id)
-	local beamPos = partPos(calib, "beam", VecAdd(P, VecScale(u, (L1 - L2) / 2)), tilt)
+	-- the arm's beam is two pieces starting at the hub's faces (0.9 m from the axis, the axle's corners
+	-- reach 0.85 m): in-game 11.10 one 14.4 m beam ran through the axle, so the hinge point lay in three
+	-- shapes (hub, beam, axle) and the dynamic beam stuck in the static axle - the arm did not move
+	local r0 = MODELS.hub[1] * 0.1 * SCALE * 0.5
+	local longLen, shortLen = MODELS.beam_long[2] * 0.1 * SCALE, MODELS.beam_short[2] * 0.1 * SCALE
+	local beamLongPos = partPos(calib, "beam_long", VecAdd(P, VecScale(u, r0 + longLen / 2)), tilt)
+	local beamShortPos = partPos(calib, "beam_short", VecSub(P, VecScale(u, r0 + shortLen / 2)), tilt)
 	local T = VecAdd(P, VecScale(u, L1))
 	local bucketPos = partPos(calib, "bucket", VecAdd(T, Vec(0, 0.3, 0)), id)
 	local weightPos = partPos(calib, "weight", VecSub(P, VecScale(u, L2)), tilt)
@@ -161,7 +167,8 @@ local function prefab(calib)
 		"<body dynamic='true' tags='catapult_arm catapult_part interact=Fire'>" ..
 		"<vox file='MOD/vox/hub.vox' scale='" .. SCALE .. "' pos='" .. fmt3(hubPos) .. "' " .. tag .. ">" ..
 		"<joint pos='" .. fmt3(hubPc) .. "' rot='0 90 0' type='hinge' size='0.5' rotstrength='0' rotspring='0'/></vox>" ..
-		"<vox file='MOD/vox/beam.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
+		"<vox file='MOD/vox/beam_long.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamLongPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
+		"<vox file='MOD/vox/beam_short.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamShortPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(bucketPos) .. "' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
 		"</body>")
@@ -322,7 +329,7 @@ function server.stepPending()
 		return
 	end
 	-- assemble: find frame, arm, hinge, axle and bucket among what Spawn returned
-	local c = { id = 0, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, yaw = pd.yaw, base = pd.g,
+	local c = { id = 0, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, hub = 0, yaw = pd.yaw, base = pd.g,
 		power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0, held = {}, heldPlayers = {}, sign = 1, calib = pd.calib }
 	local bodies, shapes = {}, {}
 	for i = 1, #pd.ents do
@@ -342,6 +349,12 @@ function server.stepPending()
 		local d = dims(sh)
 		if d == "4x4x26" then c.axle = sh axleBody = GetShapeBody(sh) end
 		if d == "5x9x9" then c.bucket = sh armBody = GetShapeBody(sh) end
+		if d == "6x6x6" then c.hub = sh end
+	end
+	-- the hinge: from what Spawn returned, else from the hub's own joints
+	if c.joint == 0 and c.hub ~= 0 then
+		local js = GetShapeJoints(c.hub)
+		if js and js[1] then c.joint = js[1] end
 	end
 	-- the arm is the body holding the bucket (or the dynamic / tagged one), the frame the other one
 	for _, b in ipairs(bodies) do
@@ -354,6 +367,8 @@ function server.stepPending()
 	if c.arm == 0 then missing[#missing + 1] = "arm" end
 	if c.axle == 0 then missing[#missing + 1] = "axle" end
 	if c.bucket == 0 then missing[#missing + 1] = "bucket" end
+	if c.hub == 0 then missing[#missing + 1] = "hub" end
+	if c.joint == 0 then missing[#missing + 1] = "hinge" end
 	if #missing > 0 then
 		if pd.tries < 30 then shared.cp.reason = "placing: waiting for " .. table.concat(missing, ", ") .. " (tick " .. pd.tries .. ")" return end
 		-- never leave half a catapult behind that nothing can remove

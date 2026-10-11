@@ -4,10 +4,12 @@ The machine is assembled in Lua from symmetric parts placed with pos/rot in one 
 string, so the result does not depend on how the game orients a model internally:
   frame.vox   static wooden A-frame trebuchet stand, symmetric front/back (the throw axis)
   axle.vox    the axle bar (part of the static frame), 26 x 4 x 4 voxels
-  hub.vox     the arm's hub around the axle: same model size as the axle, so whatever origin
-              convention the game uses, hub and axle shift identically and the hinge joint
-              placed in the hub always lies inside the axle
-  beam.vox    the throwing arm, 14.4 m, symmetric along its length
+  hub.vox     the arm's hub, a 6 x 6 x 6 iron cube around the axle (1.8 m, the axle is 1.2 m
+              thick): the hinge joint sits in the hub and the axle and in nothing else
+  beam_long.vox / beam_short.vox  the throwing arm in two pieces (9 m to the bucket, 2.4 m to the
+              counterweight) that start at the hub's faces: in-game 11.10 one 14.4 m beam ran
+              through the axle, the hinge point lay in three shapes and the dynamic beam jammed
+              in the static axle - the arm did not move
   bucket.vox  open cup at the long end of the arm
   weight.vox  hollow counterweight box at the short end
 Ammo: boulder.vox (rock), barrel.vox, crate.vox, hulk.vox (a car body when the game's own
@@ -112,14 +114,18 @@ def probe() -> VoxFile:
     return vf
 
 
+HUB = 6
+BEAM_LONG, BEAM_SHORT = 30, 8
+
+
 def hub() -> VoxFile:
-    """A 4 x 4 x 4 iron block around the axle: a cube, so its centre is the same in any axis order."""
+    """A 6 x 6 x 6 iron block around the 4 x 4 axle: a cube, so its centre is the same in any axis order."""
     vf = VoxFile()
     palette(vf)
-    m = Model("hub", (4, 4, 4))
-    for x in range(4):
-        for y in range(4):
-            for z in range(4):
+    m = Model("hub", (HUB, HUB, HUB))
+    for x in range(HUB):
+        for y in range(HUB):
+            for z in range(HUB):
                 m.set(x, y, z, IRON if (x + y + z) % 3 else IRON_LT)
     vf.models = [m]
     return vf
@@ -141,12 +147,12 @@ def bar(name, filled) -> VoxFile:
     return vf
 
 
-def beam() -> VoxFile:
+def beam(name, n) -> VoxFile:
     vf = VoxFile()
     palette(vf)
     rnd = random.Random(3)
-    m = Model("beam", (2, 48, 2))
-    for y in range(48):
+    m = Model(name, (2, n, 2))
+    for y in range(n):
         for x in range(2):
             for z in range(2):
                 m.set(x, y, z, IRON if y % 8 == 0 else wood(rnd, x, y, z))
@@ -265,7 +271,8 @@ def mallet() -> VoxFile:
     return vf
 
 
-MODELS = {"frame.vox": frame, "axle.vox": lambda: bar("axle", True), "hub.vox": hub, "probe.vox": probe, "beam.vox": beam,
+MODELS = {"frame.vox": frame, "axle.vox": lambda: bar("axle", True), "hub.vox": hub, "probe.vox": probe,
+          "beam_long.vox": lambda: beam("beam_long", BEAM_LONG), "beam_short.vox": lambda: beam("beam_short", BEAM_SHORT),
           "bucket.vox": bucket, "weight.vox": weight, "boulder.vox": boulder, "barrel.vox": barrel, "crate.vox": crate,
           "hulk.vox": hulk, "mallet.vox": mallet}
 

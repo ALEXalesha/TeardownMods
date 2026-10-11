@@ -160,6 +160,9 @@ local function prefab(calib)
 	local bucketPos = partPos(calib, "bucket", VecAdd(T, Vec(0, 0.3, 0)), id)
 	local weightPos = partPos(calib, "weight", VecSub(P, VecScale(u, L2)), tilt)
 	local tag = "tags='catapult_part'"
+	-- designed centres (catapult space) for the debug line: in-game 11.10 the arm looked apart
+	local design = { hub = P, beam_long = VecAdd(P, VecScale(u, r0 + longLen / 2)), beam_short = VecSub(P, VecScale(u, r0 + shortLen / 2)),
+		bucket = VecAdd(T, Vec(0, 0.3, 0)), weight = VecSub(P, VecScale(u, L2)) }
 	return prefabXml("catapult", "<body dynamic='false' tags='catapult catapult_part interact=Fire'>" ..
 		"<vox file='MOD/vox/frame.vox' scale='" .. SCALE .. "' pos='" .. fmt3(framePos) .. "' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/axle.vox' scale='" .. SCALE .. "' pos='" .. fmt3(axlePos) .. "' " .. tag .. "/>" ..
@@ -171,7 +174,7 @@ local function prefab(calib)
 		"<vox file='MOD/vox/beam_short.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamShortPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(bucketPos) .. "' " .. tag .. "/>" ..
 		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
-		"</body>")
+		"</body>"), design
 end
 
 ---------------------------------------------------------------------------
@@ -322,7 +325,9 @@ function server.stepPending()
 		local calib = server.readProbe()
 		if not calib then shared.cp.reason = "placing: waiting for probe bounds (tick " .. pd.tries .. ")" return end
 		pd.calib = calib
-		pd.ents = Spawn(prefab(calib), Transform(pd.g, QuatEuler(0, pd.yaw, 0)), true)
+		local xml
+		xml, pd.design = prefab(calib)
+		pd.ents = Spawn(xml, Transform(pd.g, QuatEuler(0, pd.yaw, 0)), true)
 		pd.stage = "assemble"
 		pd.tries = 0
 		shared.cp.reason = "placing: assembling"
@@ -350,6 +355,9 @@ function server.stepPending()
 		if d == "4x4x26" then c.axle = sh axleBody = GetShapeBody(sh) end
 		if d == "5x9x9" then c.bucket = sh armBody = GetShapeBody(sh) end
 		if d == "6x6x6" then c.hub = sh end
+		if d == "2x2x30" then c.beamLong = sh end
+		if d == "2x2x8" then c.beamShort = sh end
+		if d == "8x8x8" then c.weight = sh end
 	end
 	-- the hinge: from what Spawn returned, else from the hub's own joints
 	if c.joint == 0 and c.hub ~= 0 then
@@ -377,6 +385,7 @@ function server.stepPending()
 		refuse("refused: " .. table.concat(missing, ", ") .. " not found among " .. #bodies .. " bodies / " .. #shapes .. " shapes after 30 ticks", "assembly")
 		return
 	end
+	c.design = pd.design
 	c.id = server.nextId
 	server.nextId = server.nextId + 1
 	server.cats[#server.cats + 1] = c
@@ -494,6 +503,9 @@ function server.load(c, kind)
 		end
 	end
 	c.loaded = name
+	-- for the debug line (11.10: "the ammo sometimes does not spawn at all")
+	c.loadDbg = string.format("load %s: Spawn gave %d entities, %d bodies", name, #(ents or {}), nb)
+	print("catapult: " .. c.loadDbg)
 end
 
 function server.fire(c)
@@ -703,9 +715,26 @@ function server.debugInfo(c)
 		else hinge = "hub-other shape" end
 	end
 	local inBucket = #(server.contents(c))
-	c.dbg = string.format("catapult: %s | pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s, angle %.0f | load %d/%d in bucket",
+	-- where each arm part really is against its designed centre (m, catapult space x / up / back)
+	local parts = ""
+	local frameT = Transform(c.base, QuatEuler(0, c.yaw, 0))
+	for _, n in ipairs({ "hub", "beam_long", "beam_short", "bucket", "weight" }) do
+		local sh = ({ hub = c.hub, beam_long = c.beamLong, beam_short = c.beamShort, bucket = c.bucket, weight = c.weight })[n] or 0
+		if sh ~= 0 and c.design and c.design[n] and IsHandleValid(sh) then
+			local d = TransformToLocalVec(frameT, VecSub((boundsCentre(sh)), TransformToParentPoint(frameT, c.design[n])))
+			parts = parts .. string.format(" %s %.1f/%.1f/%.1f", n, d[1], d[2], d[3])
+		end
+	end
+	local js = (c.joint ~= 0) and #(GetJointShapes(c.joint) or {}) or 0
+	local first = c.loadedBodies and c.loadedBodies[1]
+	local lp = ""
+	if first and IsHandleValid(first.body) then
+		local d = TransformToLocalVec(frameT, VecSub(GetBodyTransform(first.body).pos, bk))
+		lp = string.format(", load at %.1f/%.1f/%.1f from floor", d[1], d[2], d[3])
+	elseif first then lp = ", load GONE" end
+	c.dbg = string.format("catapult: %s | pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s, angle %.0f | load %d/%d in bucket%s | %s | joint shapes %d | parts off%s",
 		c.state, cal.f[1], cal.f[2], cal.f[3], cal.measured and "" or " (default)", cal.zUp and "" or " y-up", base[2], fmn[2] - base[2], ax[2] - base[2], AXY,
-		bk[2] - base[2], hinge, VecLength(v), server.psi(c), inBucket, #(c.loadedBodies or {}))
+		bk[2] - base[2], hinge, VecLength(v), server.psi(c), inBucket, #(c.loadedBodies or {}), lp, c.loadDbg or "no load yet", js, parts)
 end
 
 -- client commands

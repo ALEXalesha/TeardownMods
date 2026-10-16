@@ -4,6 +4,10 @@
 
 ## English
 
+### 2026-10-16 - catapult built by measurement, arm turned by script, fire on Q
+
+- **Catapult**: the arm parts stood apart (the long beam 1.5 m low and 1.1 m back), the hinge held nothing and the arm did not move; the ammo lay crooked; F turned on the flashlight. Where the game puts a spawned model depends on its size, so the mod's one measurement on a small probe did not fit the other parts. Now the whole machine is first spawned out of sight, every part is measured and corrected, and the real one is checked again (each part within 5 cm). The arm turns by script about the axle instead of a spawned hinge that held nothing. Ammo is measured after it appears and laid on the bucket floor. Fire is now Q (F is the flashlight), turning Z/X (C is the game's camera view), angle V/B. The debug line has three lines: how far each part is from its place, whether the hub is on the axle, the arm angle and the last shot, and how much of the load is in the bucket.
+
 ### 2026-10-11 - catapult arm swings, the load stays in the bucket
 
 - **Catapult**: the arm did not move and part of the load was out of sight. The 14.4 m beam ran straight through the axle: the hinge sat in three shapes at once and the moving beam jammed in the fixed axle. Now the beam is two pieces that start at the faces of a bigger hub, and only the hub touches the axle. The load was held in the bucket towards a point read in the very tick it appeared, when the game does not know a new body's centre yet: crates and boulders were pulled into the bucket floor and into each other. Now each one is held where it was put. The debug line (options, "Debug line") now shows the state, what the hinge joins, the arm's angle and how much of the load is in the bucket.
@@ -33,6 +37,10 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 2026-10-16 - катапульта собирается по замеру, рычаг поворачивает скрипт, выстрел на Q
+
+- **Катапульта**: детали рычага стояли врозь (длинная балка на 1,5 м ниже и на 1,1 м в стороне), шарнир ничего не держал, рычаг не двигался; снаряды ложились криво; F включал фонарик. Куда игра ставит созданную модель, зависит от её размера, поэтому один замер мода на маленькой пробе не подходил другим деталям. Теперь вся машина сначала ставится вне поля зрения, каждая деталь измеряется и поправляется, а настоящая машина проверяется ещё раз (каждая деталь в пределах 5 см). Рычаг поворачивает скрипт вокруг оси вместо шарнира, который ничего не держал. Снаряд после появления измеряется и кладётся на дно ковша. Выстрел теперь Q (F - фонарик), поворот Z/X (C - вид камеры в игре), угол V/B. Строка отладки стала из трёх строк: насколько каждая деталь далека от места, на оси ли втулка, угол рычага и последний выстрел, сколько груза в ковше.
 
 ### 2026-10-11 - рычаг катапульты качается, груз лежит в ковше
 

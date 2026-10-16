@@ -23,7 +23,7 @@ T.init("main")
 T.frames(2)
 T.select("catapult")
 T.frames(1)
-T.press("usetool"); T.frames(40)
+T.press("usetool"); T.frames(60)
 local c = srv().cats[1]
 T.check(c ~= nil, "the catapult is assembled (" .. tostring(T.sharedOf().cp.reason) .. ")")
 if c then
@@ -53,24 +53,25 @@ if c then
 			T.check(best > clear, string.format("arm shape %dx%dx%d stays clear of the axle (closest %.2f m to the hinge axis, axle reaches %.2f m)", sx, sy, sz, best, clear))
 		end
 	end
-	-- the hinge sits in the hub and in the axle only
-	local jt = H.joints[c.joint]
-	if jt then
-		local b = H.bodies[jt.body]
-		local jp = A.TransformToParentTransform(A.Transform(b.pos, b.rot), jt.localT).pos
-		-- (the frame model's box holds the axle area too, but has no voxels there: arm shapes + axle only)
-		local inside = {}
-		local cand = { c.axle }
-		for _, sh in ipairs(A.GetBodyShapes(c.arm)) do cand[#cand + 1] = sh end
-		for _, sh in ipairs(cand) do
-			local sx, sy, sz, vs = A.GetShapeSize(sh)
-			local lp = A.TransformToLocalPoint(A.GetShapeWorldTransform(sh), jp)
-			if lp[1] > 0 and lp[1] < sx * vs and lp[2] > 0 and lp[2] < sy * vs and lp[3] > 0 and lp[3] < sz * vs then inside[#inside + 1] = sh end
+	-- since 16.10 the arm turns by script (no spawned joint): the hub sits around the axle, so the arm's
+	-- shapes must not collide with the frame's, or the arm would jam on the axle
+	local function band(a, b)
+		local r, bit = 0, 1
+		while a > 0 and b > 0 do
+			if a % 2 == 1 and b % 2 == 1 then r = r + bit end
+			a, b, bit = math.floor(a / 2), math.floor(b / 2), bit * 2
 		end
-		local ok = #inside == 2
-		for _, sh in ipairs(inside) do if sh ~= hub and sh ~= c.axle then ok = false end end
-		T.check(ok, "the hinge point lies in exactly the hub and the axle (" .. #inside .. " shapes of the arm and the axle)")
-	else
-		T.check(false, "the catapult has its hinge")
+		return r
 	end
+	local function collide(a, b)
+		local la, ma = A.GetShapeCollisionFilter(a)
+		local lb, mb = A.GetShapeCollisionFilter(b)
+		return band(la, mb) ~= 0 and band(lb, ma) ~= 0
+	end
+	local jams = 0
+	for _, sa in ipairs(A.GetBodyShapes(c.arm)) do
+		for _, sf in ipairs(A.GetBodyShapes(c.frame)) do if collide(sa, sf) then jams = jams + 1 end end
+	end
+	T.check(jams == 0, "no arm shape collides with the frame or the axle (" .. jams .. " pairs)")
+	T.check(srv().hubOffAxle(c) <= 0.05, string.format("the hub sits on the axle's axis (%.2f m)", srv().hubOffAxle(c)))
 end

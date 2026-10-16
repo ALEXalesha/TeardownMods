@@ -1,5 +1,5 @@
 -- Catapult laws (spawned shapes follow the game: pivot at the bottom-face centre, transform one
--- tick late; the hinge is driven by its motor):
+-- tick late; the arm is turned by the script):
 --  * range grows with power; full power throws the boulder >= 150 m;
 --  * the arc preview predicts the landing within 5 %;
 --  * the load leaves the bucket at the release, with the planned speed, and nothing holds it after;
@@ -17,10 +17,10 @@ T.init("main")
 T.frames(2)
 T.select("catapult")
 T.frames(1)
-T.press("usetool"); T.frames(10)
+T.press("usetool"); T.frames(60)
 local c = srv().cats[1]
 T.check(c ~= nil and c.state == "ready", "a catapult is placed and ready")
-T.check(c.joint ~= 0 and H.joints[c.joint].type == "hinge", "its arm hangs on a hinge joint")
+T.check(srv().hubOffAxle(c) <= 0.05, "its arm hangs on the axle")
 T.check(c.loaded == "boulder", "a boulder is loaded")
 local fp = H.bodies[c.frame].pos
 T.check(math.abs(fp[3] + 14) < 0.5, string.format("placed 14 m in front of the player (z %.1f)", fp[3]))
@@ -34,7 +34,7 @@ local function throw(power)
 	local predicted = cli().arcRange
 	local inside = srv().contents(c)
 	local boulder = inside[1]
-	T.press("f"); T.frames(1)
+	T.press("q"); T.frames(1)
 	local rel = nil
 	for i = 1, 120 do
 		T.frames(1)

@@ -21,16 +21,16 @@ T.init("main")
 T.frames(2)
 T.select("catapult")
 T.frames(1)
-T.press("usetool"); T.frames(40)
+T.press("usetool"); T.frames(60)
 local c = srv().cats[1]
 T.check(c ~= nil and c.state == "ready", "the catapult is placed and ready (" .. tostring(T.sharedOf().cp.reason) .. ")")
 if c then
 	local function settled(kind, n)
 		for _, b in ipairs(srv().contents(c)) do A.Delete(b) end
 		T.frames(2)
-		T.press(kind); T.frames(1)
+		T.press(kind); T.frames(5)              -- spawned, measured and laid into the bucket
 		local bodies = {}
-		for _, h in ipairs(c.loadedBodies or {}) do bodies[#bodies + 1] = { b = h.body, p = A.VecCopy(H.bodies[h.body].pos) } end
+		for _, g in ipairs(c.groups or {}) do for _, b in ipairs(g.bodies) do bodies[#bodies + 1] = { b = b, p = A.VecCopy(H.bodies[b].pos) } end end
 		T.check(#bodies == n, string.format("key %s loads %d bodies (%d)", kind, n, #bodies))
 		T.frames(60)
 		local worst = 0
@@ -41,7 +41,7 @@ if c then
 	settled("1", 1)
 	local crates = settled("4", 6)
 	T.check(#srv().contents(c) == 6, "all six crates are in the bucket")
-	T.press("f"); T.frames(1)
+	T.press("q"); T.frames(1)
 	T.runUntil(function() return c.state ~= "swing" end, 240)
 	T.frames(2)
 	local thrown = 0

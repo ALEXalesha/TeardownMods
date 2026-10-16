@@ -817,7 +817,7 @@ end
 A.IsJointBroken = function(j) local jj = H.joints[j]; return jj == nil or jj.broken end
 A.GetJointType = function(j) local jj = H.joints[j]; return jj and jj.type or "" end
 A.GetJointShapes = function(j) local jj = H.joints[j]; return jj and { jj.shapes[1], jj.shapes[2] } or {} end
-A.GetJointOtherShape = function(j, s) local jj = H.joints[j]; if not jj then return 0 end if jj.shapes[1] == s then return jj.shapes[2] end return jj.shapes[1] end
+A.GetJointOtherShape = function(j, s) local jj = H.joints[j]; if not jj then return 0 end if jj.shapes[1] == s then return jj.shapes[2] or 0 end if jj.shapes[2] == s then return jj.shapes[1] or 0 end return 0 end
 A.DetachJointFromShape = function(j, s) local jj = H.joints[j]; if jj then jj.broken = true; H.note("joint detached " .. j) end end
 A.GetJointedBodies = function(b) return {} end
 A.SetJointMotor = function(j, vel, strength) local jj = H.joints[j]; if jj then jj.motorVel = vel; jj.target = nil end end
@@ -985,6 +985,14 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 				end
 				if model and model.pivot == "bottomcenter" and size then
 					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, 0, -size[3] * vs * 0.5)))
+				elseif model and model.pivot == "field" and size then
+					-- measured in the game (Alexey's debug lines 11.10 and 16.10): the vox is centred on its pos
+					-- across and up (floor(n/2) voxels from the low side), but along the model's MagicaVoxel y
+					-- (the shape's z) the pivot lies floor(n/2)+1 voxels from the low side - so the offset depends
+					-- on the size: a 4-deep probe reads 0.75, the 30-voxel beam 0.53, the 8-voxel beam 0.63. A mod
+					-- that carries the probe's fraction over to other parts misplaces them: beam_long 1.5 m low
+					-- and 1.1 m back, beam_short 0.2 / 0.2, hub 0.1 (screenshot 16.10)
+					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-math.floor(size[1] / 2) * vs, -math.floor(size[2] / 2) * vs, -(math.floor(size[3] / 2) + 1) * vs)))
 				elseif model and model.pivot == "center" and size then
 					-- what the in-game screenshot of the first catapult shows: the vox is centred on its pos
 					local_ = A.TransformToParentTransform(attrT, A.Transform(V(-size[1] * vs * 0.5, -size[2] * vs * 0.5, -size[3] * vs * 0.5)))
@@ -1024,13 +1032,19 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 			H.joints[j] = { handle = j, shapes = { lastVox and lastVox.shape or 0, 0 }, type = parseAttr(attrs, "type") or "ball", broken = false, tags = {},
 				body = lastVox and lastVox.body or 0, localT = lastVox and A.TransformToParentTransform(lastVox.attrT, H.attrTransform(attrs)) or A.Transform(),
 				angle = 0, spawnedWith = out }
+			if H.spawnModel and H.spawnModel.jointsAttach == false then
+				-- in-game 16.10: "joint shapes 0 | hinge hub-nothing" - the spawned hinge holds no shape at all
+				-- (not broken either): nothing keeps the arm on the axle
+				H.joints[j].shapes = {}
+				H.joints[j].unattached = true
+			end
 			out[#out + 1] = j
 		end
 	end
 	if H.spawnModel and H.spawnModel.physics then
 		for _, e in ipairs(out) do
 			local jj = H.joints[e]
-			if jj and jj.body ~= 0 then
+			if jj and jj.body ~= 0 and not jj.unattached then
 				local b = H.bodies[jj.body]
 				local wt = A.TransformToParentTransform(A.Transform(b.pos, b.rot), jj.localT)
 				local inside = false
@@ -1639,7 +1653,7 @@ end
 function H.hingeStep(dt)
 	for j, jj in pairs(H.joints) do
 		local b = jj.body and H.bodies[jj.body]
-		if jj.type == "hinge" and b and b.valid and b.dynamic and not jj.broken then
+		if jj.type == "hinge" and b and b.valid and b.dynamic and not jj.broken and not jj.unattached then
 			b.hinged = true
 			local w = 0
 			if jj.target then

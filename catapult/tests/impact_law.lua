@@ -1,7 +1,7 @@
 -- Catapult laws, part 2: impacts, ammo, controls, limits.
 --  * a boulder hitting a wood wall and a brick wall at >= 30 m/s breaks a hole in each;
 --  * crates, barrel and car are loaded and thrown; the barrel explodes where it lands;
---  * E on the machine fires it; Z/C turn it; X/V set the angle; a broken hinge stops it;
+--  * E on the machine fires it; Z/X turn it; V/B set the angle; a destroyed hub stops it;
 --  * no runaway spawning: at most 4 catapults, at most 24 mod ammo bodies, 3 cars;
 --  * R removes every catapult and all its ammo; per-frame work stays bounded.
 local function V(x, y, z) return { x, y, z } end
@@ -25,9 +25,9 @@ T.select("catapult")
 T.frames(1)
 
 -- two catapults side by side, a wooden wall in front of one, a brick wall in front of the other
-T.press("usetool"); T.frames(8)
+T.press("usetool"); T.frames(60)
 H.P(1).pos = V(30, 0, 0)
-T.press("usetool"); T.frames(8)
+T.press("usetool"); T.frames(60)
 H.P(1).pos = V(15, 0, 20)
 local c1, c2 = srv().cats[1], srv().cats[2]
 T.check(c1 and c2 and c1.state == "ready" and c2.state == "ready", "two catapults ready")
@@ -67,13 +67,15 @@ T.check(c1.yaw - yaw0 > 20, string.format("Z turns the catapult (%.0f degrees in
 local fr = H.bodies[c1.frame].rot
 local fwd = H.API.QuatRotateVec(fr, V(0, 0, -1))
 T.check(math.abs(math.deg(math.atan2(-fwd[1], -fwd[3])) - c1.yaw) < 1, "the frame really turned")
-T.press("c")
-for i = 1, 60 do T.hold("c"); T.frames(1) end
-T.release("c"); T.frames(4)
-T.press("x"); T.frames(3)
-T.check(c1.angle == 40, "X lowers the angle (" .. c1.angle .. ")")
+T.press("x")
+for i = 1, 60 do T.hold("x"); T.frames(1) end
+T.release("x"); T.frames(4)
+T.check(math.abs(c1.yaw - yaw0) < 3, string.format("X turns it back (%.0f degrees off)", c1.yaw - yaw0))
+T.check(srv().hubOffAxle(c1) <= 0.05, "after turning the arm still hangs on the axle")
 T.press("v"); T.frames(3)
-T.check(c1.angle == 45, "V raises it again")
+T.check(c1.angle == 40, "V lowers the angle (" .. c1.angle .. ")")
+T.press("b"); T.frames(3)
+T.check(c1.angle == 45, "B raises it again")
 
 -- crates: all six are thrown together
 local function emptyBucket(c)
@@ -84,7 +86,7 @@ emptyBucket(c1)
 T.press("4"); T.frames(3)
 local crates = srv().contents(c1)
 T.check(#crates == 6, "4 loads a pile of 6 crates (" .. #crates .. ")")
-T.press("f")
+T.press("q")
 T.runUntil(function() return c1.state == "reset" end, 120)
 T.check(c1.lastLaunch and c1.lastLaunch.held == 6, "all six crates are thrown (" .. (c1.lastLaunch and c1.lastLaunch.held or 0) .. ")")
 T.runUntil(function() return c1.state == "ready" end, 600)
@@ -94,7 +96,7 @@ T.frames(3)
 emptyBucket(c1)
 T.press("2"); T.frames(3)
 local ex0 = #H.explosions
-T.press("f")
+T.press("q")
 T.runUntil(function() return #H.explosions > ex0 end, 900)
 T.check(#H.explosions > ex0, "the explosive barrel explodes where it lands")
 T.runUntil(function() return c1.state == "ready" end, 600)
@@ -106,7 +108,7 @@ T.press("3"); T.frames(3)
 local cars = 0
 for _, a in ipairs(srv().ammo) do if a.kind == "car" and H.API.IsHandleValid(a.body) then cars = cars + 1 end end
 T.check(cars >= 1, "3 loads a car (" .. cars .. " bodies)")
-T.press("f")
+T.press("q")
 T.runUntil(function() return c1.state == "reset" end, 120)
 T.check(c1.lastLaunch and c1.lastLaunch.held >= 1, "the car is thrown")
 T.runUntil(function() return c1.state == "ready" end, 600)
@@ -141,10 +143,10 @@ for i = 1, 6 do H.P(1).pos = V(-60 - 30 * i, 0, 0); T.press("usetool"); T.frames
 T.check(#srv().cats == 4, "at most 4 catapults (" .. #srv().cats .. ")")
 T.check(T.hasText("At most 4"), "message when full")
 
--- a broken hinge stops the machine
-H.joints[c2.joint].broken = true
+-- a destroyed hub (the arm's hinge part) stops the machine
+H.API.Delete(c2.hub)
 T.frames(2)
-T.check(c2.state == "broken", "a broken hinge marks the catapult broken")
+T.check(c2.state == "broken", "a destroyed hub marks the catapult broken")
 local f0 = sh().cp.fireN
 srv().fire(c2)
 T.check(sh().cp.fireN == f0, "a broken catapult does not fire")

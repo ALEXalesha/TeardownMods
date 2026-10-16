@@ -22,7 +22,7 @@ T.select("catapult")
 T.frames(1)
 
 -- 1. it assembles: two bodies from one Spawn, the arm carries the bucket, the hinge joins them
-T.press("usetool"); T.frames(40)
+T.press("usetool"); T.frames(60)
 local c = srv().cats[1]
 T.check(c ~= nil, "the catapult is assembled (refusal: " .. tostring(T.sharedOf().cp.reason) .. ")")
 local spawn = nil
@@ -35,10 +35,7 @@ if c then
 	local sx, sy, sz = A.GetShapeSize(c.bucket)
 	local t = { sx, sy, sz } table.sort(t)
 	T.check(t[1] == 5 and t[2] == 9 and t[3] == 9, "the bucket shape is the 9x9x5 bucket")
-	T.check(c.joint ~= 0 and A.GetJointType(c.joint) == "hinge" and not A.IsJointBroken(c.joint), "a hinge joins the arm to the axle and holds")
-	local bodies = {}
-	for _, sh in ipairs(A.GetJointShapes(c.joint)) do if sh and sh ~= 0 then bodies[A.GetShapeBody(sh)] = true end end
-	T.check(bodies[c.arm] == true, "the hinge belongs to the arm")
+	T.check(srv().hubOffAxle(c) <= 0.05, "the arm hangs on the axle (scripted hinge)")
 	T.check(T.hasText("Catapult placed"), "the player is told it is placed")
 end
 T.check(not T.hasText("refused") and not T.hasText("placing:"), "no yellow debug line on screen by default")
@@ -67,13 +64,13 @@ T.frames(150)
 H.P(1).yaw = 90
 H.spawnModel.maxBodies = 1
 local n0 = #srv().cats
-T.press("usetool"); T.frames(45)
+T.press("usetool"); T.frames(90)
 H.spawnModel.maxBodies = nil
 T.check(#srv().cats == n0, "a half catapult is not registered")
 T.check(T.hasText("did not assemble"), "a failed assembly says so")
 T.check(not T.hasText("aim at open ground"), "a failed assembly is not reported as bad ground")
 local logged = false
-for i = printed0 + 1, #H.printed do if H.printed[i]:find("arm", 1, true) and H.printed[i]:find("catapult", 1, true) then logged = true end end
+for i = printed0 + 1, #H.printed do if H.printed[i]:find("missing", 1, true) and H.printed[i]:find("catapult", 1, true) then logged = true end end
 T.check(logged, "the refusal reason is written to the log")
 local left = 0
 for _, b in pairs(H.bodies) do if b.valid and b.tags and b.tags.catapult_part ~= nil and b.spawnFrame and b.spawnFrame > 0 then left = left + 1 end end
@@ -83,7 +80,7 @@ T.check(left == 2, string.format("nothing of the failed catapult is left (bodies
 H.reg["options.language"] = 7
 H.spawnModel.maxBodies = 1
 T.frames(150)
-T.press("usetool"); T.frames(45)
+T.press("usetool"); T.frames(90)
 H.spawnModel.maxBodies = nil
 T.check(T.hasText("не собралась"), "the failure message in Russian")
 H.reg["options.language"] = 0

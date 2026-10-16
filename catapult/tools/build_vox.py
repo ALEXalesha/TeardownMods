@@ -96,7 +96,8 @@ def frame() -> VoxFile:
                 for x in range(x0, x0 + 2):
                     m.set(x, y, z, IRON if z == FZ - 1 else w(x, y, z))
     for y0 in (0, FY - 2, 18):
-        line(m, (2, y0, 0), (FX - 3, y0, 0), w)                  # cross beams on the ground
+        line(m, (2, y0, 0), (FX - 4, y0, 0), w)                  # cross beams on the ground (x 2..23: symmetric, the
+                                                                  # mod aligns parts by the centre of their voxels)
     vf.models = [m]
     return vf
 

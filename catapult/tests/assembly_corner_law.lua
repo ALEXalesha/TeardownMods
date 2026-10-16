@@ -19,7 +19,7 @@ T.init("main")
 T.frames(2)
 T.select("catapult")
 T.frames(1)
-T.press("usetool"); T.frames(20)
+T.press("usetool"); T.frames(60)
 local c = srv().cats[1]
 T.check(c ~= nil, "[" .. MODEL .. "] the catapult is registered")
 if c then
@@ -39,7 +39,7 @@ if c then
 	local fcx, fcz = (fmn[1] + fmx[1]) / 2, (fmn[3] + fmx[3]) / 2
 	local acx, acz = (amn[1] + amx[1]) / 2, (amn[3] + amx[3]) / 2
 	T.check(math.abs(fcx - acx) < 0.3 and math.abs(fcz - acz) < 0.3, string.format("[%s] the axle is centred on the frame (%.2f, %.2f m off)", MODEL, fcx - acx, fcz - acz))
-	T.check(c.joint ~= 0 and not A.IsJointBroken(c.joint), "[" .. MODEL .. "] the hinge is attached")
+	T.check(srv().hubOffAxle(c) <= 0.05, string.format("[%s] the arm hangs on the axle (hub %.2f m from its axis)", MODEL, srv().hubOffAxle(c)))
 	local ab = H.bodies[c.arm]
 	local sp = math.sqrt(ab.vel[1] ^ 2 + ab.vel[2] ^ 2 + ab.vel[3] ^ 2)
 	T.check(not ab.flung and sp < 1, string.format("[%s] the arm hangs still (%.1f m/s, flung %s)", MODEL, sp, tostring(ab.flung)))

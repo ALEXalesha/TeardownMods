@@ -17,7 +17,7 @@ T.select("catapult")
 T.frames(1)
 local before = {}
 for h in pairs(H.bodies) do before[h] = true end
-T.press("usetool"); T.frames(10)
+T.press("usetool"); T.frames(60)
 T.check(#srv().cats == 1, "the catapult is registered even when body tags are not readable")
 local spawned = {}
 for h, b in pairs(H.bodies) do if not before[h] and b.valid ~= false then spawned[#spawned + 1] = h end end

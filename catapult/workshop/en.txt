@@ -1,5 +1,5 @@
 [h1]Catapult[/h1]
-A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings on a real hinge. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you.
+A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings about the axle. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you.
 
 [h2]Features[/h2]
 [list]
@@ -13,10 +13,10 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [h2]Controls[/h2]
 [list]
 [*][b]LMB[/b] - place a catapult in front of you
-[*][b]F, or E on the machine[/b] - fire
+[*][b]Q, or E on the machine[/b] - fire
 [*][b]Mouse wheel[/b] - power
-[*][b]Z / C[/b] - turn left / right
-[*][b]X / V[/b] - lower / raise the angle
+[*][b]Z / X[/b] - turn left / right
+[*][b]V / B[/b] - lower / raise the angle
 [*][b]1 2 3 4[/b] - load a boulder / barrel / car / crates
 [*][b]RMB[/b] - load the selected ammo
 [*][b]R[/b] - remove all catapults
@@ -31,7 +31,7 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [/list]
 [h2]Known limits[/h2]
 [list]
-[*]The throw speed is set by the mod at the release (so power and range are exact); the arm's swing itself is animated by the hinge motor
+[*]The throw speed is set by the mod at the release (so power and range are exact); the arm's swing itself is turned by the script about the axle
 [*]A car is the game's own small car if its prefab can be spawned, otherwise the mod's car body
 [*]At most 24 mod-spawned ammo pieces exist at once; the oldest disappear
 [/list]

@@ -1,27 +1,37 @@
 #version 2
 -- Catapult / Катапульта
 -- A giant wooden trebuchet you place in front of you. Its frame is real, destructible voxels;
--- its arm hangs on a real hinge joint and is swung by the joint's motor. Whatever lies in the
--- bucket is thrown: a boulder, an explosive barrel, a car, a pile of crates, the player.
+-- its arm turns about the axle, driven by the script. Whatever lies in the bucket is thrown: a
+-- boulder, an explosive barrel, a car, a pile of crates, the player.
 --
 --   LMB             place a catapult in front of you (up to 4)
---   F, or E on it   fire
+--   Q, or E on it   fire           (F is the game's flashlight)
 --   mouse wheel     power
---   Z / C           turn left / right          X / V   lower / raise the angle
+--   Z / X           turn left / right          V / B   lower / raise the angle   (C is the game's camera key)
 --   1 2 3 4         load a boulder / barrel / car / crates      RMB  load the selected ammo
 --   R               remove all catapults and their ammo
 --
--- How a throw works: the motor swings the arm; when the bucket's motion points along the set
--- angle (arm 90 - angle degrees above the horizontal, behind the axle) everything in the bucket
--- is released with exactly the planned speed (14-56 m/s by power), so range and the arc preview
--- agree; if the motor does not reach the angle in time, the release happens anyway. While the
--- arm swings the load is held to the bucket (ConstrainPosition; players by position), so it
--- cannot fall out early or stick afterwards; the arm brakes right after the release.
+-- Assembly by measurement (in-game 16.10, after three rounds of guessing the game's vox pivot):
+-- where the game puts a spawned vox relative to its pos depends on the model's size, so no single
+-- "pivot fraction" fits every part (the 30-voxel beam came out 1.5 m low and 1.1 m back with the
+-- fraction of a 4-voxel probe). So the whole machine is first spawned still, 60 m up, out of sight;
+-- the real centre of every part is measured (GetShapeBounds) and the difference to its designed
+-- centre is added to that part's pos; then once more to check; then the real machine is spawned on
+-- the ground and checked again (re-spawned if any part is more than 5 cm off). The corrections are
+-- kept for the next catapults.
+-- The arm turns by script, not on a spawned hinge joint: in-game the joint from the spawn text held
+-- no shape at all ("joint shapes 0, hinge hub-nothing") and what a joint attaches to cannot be set or
+-- moved by script. Every tick the arm body is set to its pose for the arm angle (the hub on the axle's
+-- axis) with the matching angular velocity; the arm's shapes do not collide with the frame's
+-- (collision filter), so the hub around the axle cannot jam. The load is held in the bucket while
+-- the arm swings and released with exactly the planned speed (14-56 m/s by power) at the set angle.
+-- Ammo is also placed by measurement: after it appears, its real bounds are read and it is moved so
+-- that it lies on the bucket floor (the car on the rim).
 -- Impacts punch holes scaled by speed and material (brick from 25 m/s, hard materials from
 -- 45 m/s), boulders punch through, barrels explode.
 --
--- Server: catapult bodies, motor, loading, release, impacts, limits. Client: input, arc
--- preview, HUD, sounds, particles.
+-- Server: catapult bodies, arm, loading, release, impacts, limits. Client: input, arc preview, HUD,
+-- sounds, particles.
 
 #include "script/include/player.lua"
 #include "script/toolanimation.lua"
@@ -33,13 +43,19 @@ local MAX_CARS = 3
 local MAX_FLYING = 24
 local HOLES_PER_UPDATE = 8
 local V_MIN, V_MAX = 14, 56      -- launch speed at power 0 / 1 (m/s)
-local SWING = 5                  -- rad/s, arm motor speed while firing
+local SWING = 290                -- deg/s, arm speed while firing (about 5 rad/s)
+local RESET = 70                 -- deg/s, arm speed back to rest
 local REST = 55                  -- arm angle below the horizontal at rest (degrees)
 local AXY = 9.6                  -- axle height (m)
 local L1, L2 = 10, 3.4           -- pivot to bucket / to counterweight (m)
 local SCALE = 3
+local VS = 0.1 * SCALE           -- voxel size (m)
+local TOL = 0.05                 -- a part more than 5 cm from its designed place counts as misplaced
+local MAX_SPAWNS = 6             -- measuring and real spawns per placement
 local AMMO = { "boulder", "barrel", "car", "crates" }
 local AMMO_K = { boulder = 1.0, barrel = 0.7, car = 0.85, crates = 0.5, other = 0.7 }
+-- collision layers: the arm's shapes do not collide with the frame's (the hub sits around the axle)
+local LAYER_FRAME, LAYER_ARM = 4, 2
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -47,7 +63,7 @@ local function getF(k, d) local key = "savegame.mod." .. k if HasKey(key) then r
 local function getI(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetInt(key) end return d end
 local function getB(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetBool(key) end return d end
 local function tr(en, ru) if GetInt("options.language") == 7 then return ru end return en end
-local function fmt3(v) return string.format("%.3f %.3f %.3f", v[1], v[2], v[3]) end
+local function fmt3(v) return string.format("%.4f %.4f %.4f", v[1], v[2], v[3]) end
 
 function readSettings()
 	return {
@@ -62,119 +78,110 @@ end
 
 -- Several bodies in one Spawn must be ONE XML document. The game spawns only the first top-level
 -- element of a text: in-game 10.10 the catapult (static frame body + dynamic arm body side by side)
--- came out as the frame alone, "arm, bucket not found among 1 bodies / 2 shapes". The game's own
--- scripts wrap their spawn texts like this (data/script/mp/lib/tools.lua); the probe uses the same
--- wrapper, so the pivot it measures is the pivot of the real assembly.
+-- came out as the frame alone. The game's own scripts wrap their spawn texts like this
+-- (data/script/mp/lib/tools.lua).
 local function prefabXml(name, inner)
 	return "<prefab version='1.2.0'><group name='" .. name .. "' pos='0.0 0.0 0.0' rot='0.0 0.0 0.0'>" .. inner .. "</group></prefab>"
 end
 
 function launchSpeed(power) return V_MIN + (V_MAX - V_MIN) * clamp(power, 0, 1) end
 
--- Model sizes in MagicaVoxel order (x, y, z-up); turned into the game's shape axes by the
--- calibration below.
-local MODELS = {
-	frame = { 26, 38, 32 }, axle = { 26, 4, 4 }, hub = { 6, 6, 6 }, beam_long = { 2, 30, 2 }, beam_short = { 2, 8, 2 },
-	bucket = { 9, 9, 5 }, weight = { 8, 8, 8 }, probe = { 2, 4, 6 },
-}
+-- the parts, which body they belong to, and how they are recognised (sorted voxel sizes)
+local PARTS = { "frame", "axle", "hub", "beam_long", "beam_short", "bucket", "weight" }
+local ARM_PARTS = { hub = true, beam_long = true, beam_short = true, bucket = true, weight = true }
+local PART_DIMS = { ["26x32x38"] = "frame", ["4x4x26"] = "axle", ["6x6x6"] = "hub", ["2x2x30"] = "beam_long",
+	["2x2x8"] = "beam_short", ["5x9x9"] = "bucket", ["8x8x8"] = "weight" }
 
--- Where does the game put a spawned vox relative to its pos? The first catapult assumed the
--- centre of the bottom face; the in-game screenshot showed the model centred on its pos (frame
--- half underground, axle floating). Instead of assuming, a small probe is spawned for one tick
--- and its world bounds are read at once (the game's own spawn menu reads bounds in the spawn
--- tick too): that gives the pivot fraction per axis and which model axis points up.
-local function validBounds(mn, mx)
-	return mx[1] - mn[1] > 0.05 and mx[2] - mn[2] > 0.05 and mx[3] - mn[3] > 0.05
-end
-
--- start a probe; server.readProbe reads it on the following ticks (a just-spawned shape may have
--- no valid bounds yet in the real game)
-function server.startProbe(at)
-	server.probe = { at = at, tries = 0,
-		ents = Spawn(prefabXml("catapult_probe", "<body dynamic='false' tags='catapult_part'><vox file='MOD/vox/probe.vox' scale='" .. SCALE .. "' tags='catapult_part'/></body>"), Transform(at), true) }
-end
-
--- returns the calibration once it is known: measured, or after 20 ticks the centre-pivot
--- fallback (what the first in-game screenshot showed)
-function server.readProbe()
-	if server.calib then return server.calib end
-	local pr = server.probe
-	if not pr then return nil end
-	pr.tries = pr.tries + 1
-	local vs = 0.1 * SCALE
-	local calib = nil
-	for i = 1, #pr.ents do
-		if GetEntityType(pr.ents[i]) == "shape" then
-			local mn, mx = GetShapeBounds(pr.ents[i])
-			if validBounds(mn, mx) then
-				local e = VecSub(mx, mn)
-				local at = pr.at
-				calib = { f = Vec((at[1] - mn[1]) / e[1], (at[2] - mn[2]) / e[2], (at[3] - mn[3]) / e[3]),
-					zUp = math.abs(e[2] - 6 * vs) < math.abs(e[2] - 4 * vs), measured = true }
-			end
-		end
-	end
-	if not calib and pr.tries >= 20 then calib = { f = Vec(0.5, 0.5, 0.5), zUp = true, measured = false } end
-	if calib then
-		for i = 1, #pr.ents do if GetEntityType(pr.ents[i]) == "body" then Delete(pr.ents[i]) end end
-		server.probe = nil
-		server.calib = calib
-	end
-	return calib
-end
-
--- the game's shape-axis size (in metres) of a model
-local function partSize(calib, name)
-	local m = MODELS[name]
-	local vs = 0.1 * SCALE
-	if calib.zUp then return Vec(m[1] * vs, m[3] * vs, m[2] * vs) end
-	return Vec(m[1] * vs, m[2] * vs, m[3] * vs)
-end
-
--- pos attribute that puts the part's centre at `centre` (with rotation `rot`)
-local function partPos(calib, name, centre, rot)
-	local sz = partSize(calib, name)
-	local pc = Vec((0.5 - calib.f[1]) * sz[1], (0.5 - calib.f[2]) * sz[2], (0.5 - calib.f[3]) * sz[3])
-	return VecSub(centre, QuatRotateVec(rot, pc)), pc
-end
-
--- the designed layout (catapult space, metres): frame on the ground, axle on its bearings, the arm
--- in its rest pose; positions are made from the measured pivot convention
-local function prefab(calib)
+-- the designed layout (catapult space, metres): the centre of every part and its tilt about x. The
+-- frame stands on the ground, the axle lies on its bearings at 9.6 m, the arm hangs in its rest pose
+-- with the bucket behind (+z) and below the axle. All models are symmetric about their centre.
+local function layout()
 	local a = math.rad(REST)
 	local u = Vec(0, -math.sin(a), math.cos(a))            -- along the arm towards the bucket (back, down)
 	local P = Vec(0, AXY, 0)
-	local id = Quat()
-	local tilt = QuatEuler(REST, 0, 0)
-	local framePos = partPos(calib, "frame", Vec(0, MODELS.frame[3] * 0.1 * SCALE * 0.5, 0), id)
-	local axlePos = partPos(calib, "axle", P, id)
-	local hubPos, hubPc = partPos(calib, "hub", P, id)
-	-- the arm's beam is two pieces starting at the hub's faces (0.9 m from the axis, the axle's corners
-	-- reach 0.85 m): in-game 11.10 one 14.4 m beam ran through the axle, so the hinge point lay in three
-	-- shapes (hub, beam, axle) and the dynamic beam stuck in the static axle - the arm did not move
-	local r0 = MODELS.hub[1] * 0.1 * SCALE * 0.5
-	local longLen, shortLen = MODELS.beam_long[2] * 0.1 * SCALE, MODELS.beam_short[2] * 0.1 * SCALE
-	local beamLongPos = partPos(calib, "beam_long", VecAdd(P, VecScale(u, r0 + longLen / 2)), tilt)
-	local beamShortPos = partPos(calib, "beam_short", VecSub(P, VecScale(u, r0 + shortLen / 2)), tilt)
-	local T = VecAdd(P, VecScale(u, L1))
-	local bucketPos = partPos(calib, "bucket", VecAdd(T, Vec(0, 0.3, 0)), id)
-	local weightPos = partPos(calib, "weight", VecSub(P, VecScale(u, L2)), tilt)
-	local tag = "tags='catapult_part'"
-	-- designed centres (catapult space) for the debug line: in-game 11.10 the arm looked apart
-	local design = { hub = P, beam_long = VecAdd(P, VecScale(u, r0 + longLen / 2)), beam_short = VecSub(P, VecScale(u, r0 + shortLen / 2)),
-		bucket = VecAdd(T, Vec(0, 0.3, 0)), weight = VecSub(P, VecScale(u, L2)) }
-	return prefabXml("catapult", "<body dynamic='false' tags='catapult catapult_part interact=Fire'>" ..
-		"<vox file='MOD/vox/frame.vox' scale='" .. SCALE .. "' pos='" .. fmt3(framePos) .. "' " .. tag .. "/>" ..
-		"<vox file='MOD/vox/axle.vox' scale='" .. SCALE .. "' pos='" .. fmt3(axlePos) .. "' " .. tag .. "/>" ..
-		"</body>" ..
-		"<body dynamic='true' tags='catapult_arm catapult_part interact=Fire'>" ..
-		"<vox file='MOD/vox/hub.vox' scale='" .. SCALE .. "' pos='" .. fmt3(hubPos) .. "' " .. tag .. ">" ..
-		"<joint pos='" .. fmt3(hubPc) .. "' rot='0 90 0' type='hinge' size='0.5' rotstrength='0' rotspring='0'/></vox>" ..
-		"<vox file='MOD/vox/beam_long.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamLongPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
-		"<vox file='MOD/vox/beam_short.vox' scale='" .. SCALE .. "' pos='" .. fmt3(beamShortPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
-		"<vox file='MOD/vox/bucket.vox' scale='" .. SCALE .. "' pos='" .. fmt3(bucketPos) .. "' " .. tag .. "/>" ..
-		"<vox file='MOD/vox/weight.vox' scale='" .. SCALE .. "' pos='" .. fmt3(weightPos) .. "' rot='" .. REST .. " 0 0' " .. tag .. "/>" ..
-		"</body>"), design
+	-- the beam is two pieces starting at the hub's faces (0.9 m from the axis; the axle's corners reach
+	-- 0.85 m): in-game 11.10 one 14.4 m beam ran through the axle
+	local r0 = 6 * VS * 0.5
+	local longLen, shortLen = 30 * VS, 8 * VS
+	return {
+		frame = { c = Vec(0, 32 * VS * 0.5, 0), tilt = 0 },
+		axle = { c = P, tilt = 0 },
+		hub = { c = P, tilt = 0 },
+		beam_long = { c = VecAdd(P, VecScale(u, r0 + longLen / 2)), tilt = REST },
+		beam_short = { c = VecSub(P, VecScale(u, r0 + shortLen / 2)), tilt = REST },
+		bucket = { c = VecAdd(VecAdd(P, VecScale(u, L1)), Vec(0, 0.3, 0)), tilt = 0 },
+		weight = { c = VecSub(P, VecScale(u, L2)), tilt = REST },
+	}, P
+end
+
+-- the spawn text: every part at its designed centre plus its measured correction. `still`: both bodies
+-- static (the measuring copy 60 m up must not fall while it is measured)
+local function prefab(fix, still)
+	local lay, P = layout()
+	local tag = still and "catapult_part catapult_measure" or "catapult_part"
+	-- the arm body's origin is the axle centre (its parts are placed relative to it)
+	local function vox(n)
+		local p = VecAdd(lay[n].c, fix[n] or Vec(0, 0, 0))
+		if ARM_PARTS[n] then p = VecSub(p, P) end
+		return "<vox file='MOD/vox/" .. n .. ".vox' scale='" .. SCALE .. "' pos='" .. fmt3(p) .. "' rot='" .. lay[n].tilt .. " 0 0' tags='" .. tag .. "'/>"
+	end
+	local frameTags = still and "catapult_part catapult_measure" or "catapult catapult_part interact=Fire"
+	local armTags = still and "catapult_part catapult_measure" or "catapult_arm catapult_part interact=Fire"
+	return prefabXml("catapult", "<body dynamic='false' tags='" .. frameTags .. "'>" .. vox("frame") .. vox("axle") .. "</body>" ..
+		"<body dynamic='" .. (still and "false" or "true") .. "' pos='" .. fmt3(P) .. "' tags='" .. armTags .. "'>" ..
+		vox("hub") .. vox("beam_long") .. vox("beam_short") .. vox("bucket") .. vox("weight") .. "</body>")
+end
+
+local function validBounds(mn, mx)
+	return mx[1] - mn[1] > 0.05 and mx[2] - mn[2] > 0.05 and mx[3] - mn[3] > 0.05
+end
+-- measured geometry, from world bounds like the game's own spawn menu
+local function boundsCentre(shape)
+	local mn, mx = GetShapeBounds(shape)
+	return VecLerp(mn, mx, 0.5), mn, mx
+end
+local function shapeDims(sh)
+	local x, y, z = GetShapeSize(sh)
+	local t = { x, y, z }
+	table.sort(t)
+	return t[1] .. "x" .. t[2] .. "x" .. t[3]
+end
+
+-- the parts among the handles Spawn returned
+local function findParts(ents)
+	local parts, bodies = {}, {}
+	for i = 1, #(ents or {}) do
+		local e = ents[i]
+		local ty = GetEntityType(e)
+		if ty == "body" then bodies[#bodies + 1] = e
+		elseif ty == "shape" then
+			local n = PART_DIMS[shapeDims(e)]
+			if n and not parts[n] then parts[n] = e end
+		end
+	end
+	return parts, bodies
+end
+local function partsProblem(parts)
+	local missing, notReady = {}, {}
+	for _, n in ipairs(PARTS) do
+		local sh = parts[n]
+		if not sh or not IsHandleValid(sh) then missing[#missing + 1] = n
+		else
+			local mn, mx = GetShapeBounds(sh)
+			if not validBounds(mn, mx) then notReady[#notReady + 1] = n end
+		end
+	end
+	if #missing > 0 then return "missing " .. table.concat(missing, ", ") end
+	if #notReady > 0 then return "no bounds yet for " .. table.concat(notReady, ", ") end
+	-- frame and axle on one body, the arm parts on another
+	local fb, ab = GetShapeBody(parts.frame), GetShapeBody(parts.hub)
+	if GetShapeBody(parts.axle) ~= fb then return "axle not on the frame body" end
+	if fb == ab then return "arm on the frame body" end
+	for n in pairs(ARM_PARTS) do if GetShapeBody(parts[n]) ~= ab then return n .. " not on the arm body" end end
+	return nil
+end
+local function deleteSpawned(ents)
+	for i = 1, #(ents or {}) do if GetEntityType(ents[i]) == "body" and IsHandleValid(ents[i]) then Delete(ents[i]) end end
 end
 
 ---------------------------------------------------------------------------
@@ -189,6 +196,7 @@ function server.init()
 	server.protect = {}           -- launched players: [p] = { t, landed }
 	server.impacts = {}
 	server.nextId = 1
+	server.fix = nil              -- measured per-part corrections (catapult space), kept for the next catapults
 	shared.cp = { reason = "", list = {}, fireN = 0, fx = 0, fy = 0, fz = 0, relN = 0, impN = 0, ix = 0, iy = 0, iz = 0, isp = 0, msg = "", mn = 0, flying = {} }
 end
 
@@ -214,23 +222,44 @@ local function nearestCat(pos, maxd)
 	return best
 end
 
--- measured geometry, from world bounds like the game's own spawn menu (no assumption about how
--- a model's axes map to the shape)
-local function boundsCentre(shape)
-	local mn, mx = GetShapeBounds(shape)
-	return VecLerp(mn, mx, 0.5), mn, mx
-end
+-- the catapult's own space: the frame body (static; spawned at the catapult transform)
+function server.catT(c) return GetBodyTransform(c.frame) end
 function server.pivot(c) return (boundsCentre(c.axle)) end
 function server.bucketCentre(c) return (boundsCentre(c.bucket)) end
 -- the inside floor of the bucket (the bucket is upright whenever this is used: at rest)
 function server.bucketFloor(c)
 	local ctr, mn = boundsCentre(c.bucket)
-	return Vec(ctr[1], mn[2] + 0.1 * SCALE, ctr[3])
+	return Vec(ctr[1], mn[2] + VS, ctr[3])
+end
+function server.bucketRim(c)
+	local _, _, mx = boundsCentre(c.bucket)
+	return mx[2]
 end
 function server.back(c) return QuatRotateVec(GetBodyTransform(c.frame).rot, Vec(0, 0, 1)) end
+-- the arm angle: the bucket's direction from the axle, degrees above the horizontal (behind the axle)
 function server.psi(c)
 	local d = VecSub(server.bucketCentre(c), server.pivot(c))
 	return math.deg(math.atan2(d[2], VecDot(d, server.back(c))))
+end
+
+-- the arm's pose for the angle c.theta (degrees turned up from rest), about the axle's axis
+function server.armPose(c, theta)
+	local fT = server.catT(c)
+	local rest = TransformToParentTransform(fT, c.armRestLocal)
+	local P = TransformToParentPoint(fT, c.pivotLocal)
+	local axis = QuatRotateVec(fT.rot, Vec(1, 0, 0))
+	local q = QuatAxisAngle(axis, -theta)
+	return Transform(VecAdd(P, QuatRotateVec(q, VecSub(rest.pos, P))), QuatRotateQuat(q, rest.rot)), P, axis
+end
+-- the scripted hinge: put the arm where its angle says, moving at `w` deg/s (so the load in the bucket
+-- feels the real motion)
+function server.holdArm(c, w)
+	local t, P, axis = server.armPose(c, c.theta)
+	SetBodyTransform(c.arm, t)
+	local wv = VecScale(axis, -math.rad(w))
+	SetBodyAngularVelocity(c.arm, wv)
+	local com = TransformToParentPoint(t, GetBodyCenterOfMass(c.arm))
+	SetBodyVelocity(c.arm, VecCross(wv, VecSub(com, P)))
 end
 
 function server.sync()
@@ -277,9 +306,9 @@ function server.tick(dt)
 	end
 end
 
--- LMB: find the ground, then (over the next ticks) measure the pivot and assemble. Every refusal
--- tells the player why in plain words (no ground / did not assemble / too many), and the technical
--- reason goes to the game's log (print) and to the debug line, which is off by default.
+-- LMB: find the ground, then (over the next ticks) measure and assemble. Every refusal tells the
+-- player why in plain words (no ground / did not assemble / too many), and the technical reason goes
+-- to the game's log (print) and to the debug line, which is off by default.
 local function refuse(reason, kind)
 	shared.cp.reason = reason
 	print("catapult: " .. reason)
@@ -311,85 +340,100 @@ function server.place(p)
 		g = Vec(probe[1], pp[2] + 1 - d2, probe[3])
 	end
 	local yaw = math.deg(math.atan2(-flat[1], -flat[3]))
-	server.pending = { stage = "probe", g = g, yaw = yaw, tries = 0 }
-	if not server.calib and not server.probe then server.startProbe(VecAdd(g, Vec(0, 60, 0))) end
-	shared.cp.reason = "placing: measuring the vox pivot"
+	local fix = {}
+	for n, v in pairs(server.fix or {}) do fix[n] = VecCopy(v) end
+	server.pending = { stage = server.fix and "assemble" or "measure", g = g, yaw = yaw, tries = 0, spawns = 0, measures = 0, fix = fix }
+	shared.cp.reason = "placing: " .. server.pending.stage
 end
 
--- the pending placement, one step per tick
+-- the pending placement, one step per tick:
+--   measure  - a still copy 60 m up: where did each part really come out? correct its pos, repeat
+--              until every part is within 5 cm (at least twice: once to measure, once to check)
+--   assemble - the real catapult on the ground, checked the same way (re-spawned if a part is off)
 function server.stepPending()
 	local pd = server.pending
 	if not pd then return end
 	pd.tries = pd.tries + 1
-	if pd.stage == "probe" then
-		local calib = server.readProbe()
-		if not calib then shared.cp.reason = "placing: waiting for probe bounds (tick " .. pd.tries .. ")" return end
-		pd.calib = calib
-		local xml
-		xml, pd.design = prefab(calib)
-		pd.ents = Spawn(xml, Transform(pd.g, QuatEuler(0, pd.yaw, 0)), true)
-		pd.stage = "assemble"
+	local catT = Transform(pd.g, QuatEuler(0, pd.yaw, 0))
+	if not pd.ents then
+		if pd.spawns >= MAX_SPAWNS then
+			-- the measurements do not settle: build with what we have and let the debug line show it
+			pd.stage = "assemble"
+		end
+		pd.at = (pd.stage == "measure") and Transform(VecAdd(pd.g, Vec(0, 60, 0)), catT.rot) or catT
+		pd.ents = Spawn(prefab(pd.fix, pd.stage == "measure"), pd.at, true)
+		pd.spawns = pd.spawns + 1
 		pd.tries = 0
-		shared.cp.reason = "placing: assembling"
+		shared.cp.reason = "placing: " .. pd.stage .. " (spawn " .. pd.spawns .. ")"
 		return
 	end
-	-- assemble: find frame, arm, hinge, axle and bucket among what Spawn returned
-	local c = { id = 0, frame = 0, arm = 0, joint = 0, axle = 0, bucket = 0, hub = 0, yaw = pd.yaw, base = pd.g,
-		power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0, held = {}, heldPlayers = {}, sign = 1, calib = pd.calib }
-	local bodies, shapes = {}, {}
-	for i = 1, #pd.ents do
-		local ty = GetEntityType(pd.ents[i])
-		if ty == "body" then bodies[#bodies + 1] = pd.ents[i]
-		elseif ty == "shape" then shapes[#shapes + 1] = pd.ents[i]
-		elseif ty == "joint" and c.joint == 0 then c.joint = pd.ents[i] end
-	end
-	local function dims(sh)
-		local x, y, z = GetShapeSize(sh)
-		local t = { x, y, z }
-		table.sort(t)
-		return t[1] .. "x" .. t[2] .. "x" .. t[3]
-	end
-	local axleBody, armBody = 0, 0
-	for _, sh in ipairs(shapes) do
-		local d = dims(sh)
-		if d == "4x4x26" then c.axle = sh axleBody = GetShapeBody(sh) end
-		if d == "5x9x9" then c.bucket = sh armBody = GetShapeBody(sh) end
-		if d == "6x6x6" then c.hub = sh end
-		if d == "2x2x30" then c.beamLong = sh end
-		if d == "2x2x8" then c.beamShort = sh end
-		if d == "8x8x8" then c.weight = sh end
-	end
-	-- the hinge: from what Spawn returned, else from the hub's own joints
-	if c.joint == 0 and c.hub ~= 0 then
-		local js = GetShapeJoints(c.hub)
-		if js and js[1] then c.joint = js[1] end
-	end
-	-- the arm is the body holding the bucket (or the dynamic / tagged one), the frame the other one
-	for _, b in ipairs(bodies) do
-		if b == armBody or (armBody == 0 and (IsBodyDynamic(b) or HasTag(b, "catapult_arm"))) then c.arm = b
-		elseif b == axleBody or c.frame == 0 then c.frame = b end
-	end
-	if c.frame ~= 0 and c.frame == c.arm then c.frame = 0 end
-	local missing = {}
-	if c.frame == 0 then missing[#missing + 1] = "frame" end
-	if c.arm == 0 then missing[#missing + 1] = "arm" end
-	if c.axle == 0 then missing[#missing + 1] = "axle" end
-	if c.bucket == 0 then missing[#missing + 1] = "bucket" end
-	if c.hub == 0 then missing[#missing + 1] = "hub" end
-	if c.joint == 0 then missing[#missing + 1] = "hinge" end
-	if #missing > 0 then
-		if pd.tries < 30 then shared.cp.reason = "placing: waiting for " .. table.concat(missing, ", ") .. " (tick " .. pd.tries .. ")" return end
+	local parts = findParts(pd.ents)
+	local problem = partsProblem(parts)
+	if problem then
+		if pd.tries < 30 then shared.cp.reason = "placing: " .. pd.stage .. ", waiting: " .. problem .. " (tick " .. pd.tries .. ")" return end
 		-- never leave half a catapult behind that nothing can remove
-		for i = 1, #pd.ents do if GetEntityType(pd.ents[i]) == "body" then Delete(pd.ents[i]) end end
+		local _, bodies = findParts(pd.ents)
+		local nShapes = 0
+		for i = 1, #pd.ents do if GetEntityType(pd.ents[i]) == "shape" then nShapes = nShapes + 1 end end
+		deleteSpawned(pd.ents)
 		server.pending = nil
-		refuse("refused: " .. table.concat(missing, ", ") .. " not found among " .. #bodies .. " bodies / " .. #shapes .. " shapes after 30 ticks", "assembly")
+		refuse("refused: " .. problem .. " among " .. #bodies .. " bodies / " .. nShapes .. " shapes after 30 ticks", "assembly")
 		return
 	end
-	c.design = pd.design
-	c.id = server.nextId
+	local lay = layout()
+	local err, worst = {}, 0
+	local frameBody, armBody = GetShapeBody(parts.frame), GetShapeBody(parts.hub)
+	local restT = nil
+	if pd.stage == "measure" then
+		-- a still copy: every part measured in the space it was spawned in
+		for _, n in ipairs(PARTS) do err[n] = VecSub(lay[n].c, TransformToLocalPoint(pd.at, (boundsCentre(parts[n])))) end
+	else
+		-- the real one: frame parts in catapult space; the arm (dynamic - it may have dropped a few mm since
+		-- the spawn) as it will be held: its hub on the axle's centre, turned like the catapult
+		local axleW = boundsCentre(parts.axle)
+		local B1 = GetBodyTransform(armBody)
+		local hubLocal = TransformToLocalPoint(B1, (boundsCentre(parts.hub)))
+		restT = Transform(VecSub(axleW, QuatRotateVec(catT.rot, hubLocal)), catT.rot)
+		for _, n in ipairs(PARTS) do
+			local w = boundsCentre(parts[n])
+			if ARM_PARTS[n] then w = TransformToParentPoint(restT, TransformToLocalPoint(B1, w)) end
+			err[n] = VecSub(lay[n].c, TransformToLocalPoint(catT, w))
+		end
+		-- the hub is put on the axle by construction; its own error is the axle's
+		err.hub = VecCopy(err.axle)
+	end
+	for _, n in ipairs(PARTS) do worst = math.max(worst, VecLength(err[n])) end
+	pd.lastWorst = worst
+	if worst > TOL and pd.spawns < MAX_SPAWNS then
+		-- correct and spawn again (the game's offset of a part is fixed for its size and tilt, so one
+		-- correction is enough; the next spawn checks it)
+		for _, n in ipairs(PARTS) do pd.fix[n] = VecAdd(pd.fix[n] or Vec(0, 0, 0), err[n]) end
+		deleteSpawned(pd.ents)
+		pd.ents = nil
+		shared.cp.reason = string.format("placing: %s, worst part %.2f m off, correcting", pd.stage, worst)
+		return
+	end
+	if pd.stage == "measure" then
+		deleteSpawned(pd.ents)
+		pd.ents = nil
+		server.fix = pd.fix
+		pd.stage = "assemble"
+		return
+	end
+	-- the real catapult is in place
+	local c = { id = server.nextId, frame = frameBody, arm = armBody, axle = parts.axle, hub = parts.hub, bucket = parts.bucket,
+		beamLong = parts.beam_long, beamShort = parts.beam_short, weight = parts.weight, frameShape = parts.frame,
+		yaw = pd.yaw, base = pd.g, power = 0.75, angle = 45, ammo = readSettings().ammo, state = "settle", t = 0,
+		held = {}, heldPlayers = {}, theta = 0, spawns = pd.spawns, design = lay, groups = {} }
 	server.nextId = server.nextId + 1
+	c.armRestLocal = TransformToLocalTransform(catT, restT)
+	c.pivotLocal = TransformToLocalPoint(catT, (boundsCentre(parts.axle)))
+	for _, sh in ipairs(GetBodyShapes(c.frame)) do SetShapeCollisionFilter(sh, LAYER_FRAME, 255 - LAYER_ARM) end
+	for _, sh in ipairs(GetBodyShapes(c.arm)) do SetShapeCollisionFilter(sh, LAYER_ARM, 255 - LAYER_FRAME) end
+	server.holdArm(c, 0)
 	server.cats[#server.cats + 1] = c
 	server.pending = nil
+	server.fix = pd.fix
 	shared.cp.reason = ""
 	server.sync()
 	message("placed")
@@ -404,6 +448,21 @@ function server.bodyReady(b)
 		if not validBounds(mn, mx) then return false end
 	end
 	return true
+end
+-- world bounds of a group of bodies (all their shapes)
+local function groupBounds(bodies)
+	local mn, mx = Vec(1e9, 1e9, 1e9), Vec(-1e9, -1e9, -1e9)
+	for _, b in ipairs(bodies) do
+		if IsHandleValid(b) then
+			for _, sh in ipairs(GetBodyShapes(b)) do
+				local smn, smx = GetShapeBounds(sh)
+				if validBounds(smn, smx) then
+					for k = 1, 3 do mn[k] = math.min(mn[k], smn[k]) mx[k] = math.max(mx[k], smx[k]) end
+				end
+			end
+		end
+	end
+	return mn, mx
 end
 
 -- bodies (and players) lying in the bucket
@@ -445,72 +504,145 @@ local function trimAmmo(extra)
 	end
 end
 
+-- where each load group's bottom centre goes, relative to the bucket floor centre (catapult axes)
+local CRATE_SLOTS = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.93, -0.5 }, { 0, 0.93, 0.5 } }
+
 function server.load(c, kind)
 	if c.broken or c.state ~= "ready" then return end
+	-- an ammo key replaces this catapult's own load (in-game the auto-loaded boulder blocked the keys:
+	-- "the bucket is not empty"); anything else lying in the bucket is left alone
 	local inside = server.contents(c)
-	if #inside > 0 then message("loaded") return end
+	local mine = {}
+	for _, a in ipairs(server.ammo) do if a.cat == c.id then mine[a.body] = true end end
+	for _, g in ipairs(c.groups or {}) do for _, b in ipairs(g.bodies) do mine[b] = true end end
+	for _, b in ipairs(inside) do if not mine[b] then message("loaded") return end end
+	for b in pairs(mine) do
+		if IsHandleValid(b) and VecLength(VecSub(GetBodyTransform(b).pos, server.bucketFloor(c))) < 4 then Delete(b) end
+	end
 	local name = AMMO[kind] or "boulder"
 	local floor = server.bucketFloor(c)
 	local rot = GetBodyTransform(c.frame).rot
+	-- spawned near the bucket (its exact place is measured once it exists, see server.placeLoad)
 	local ents
-	local origins = {}             -- where each spawned body's origin was put (known from the spawn text)
+	local groups = {}
 	if name == "boulder" then
 		trimAmmo(1)
-		origins[1] = VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.8, 0))
-		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(origins[1], rot))
+		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
+		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "barrel" then
 		trimAmmo(1)
-		origins[1] = VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0))
-		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(origins[1], rot))
+		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
+		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "crates" then
 		trimAmmo(6)
 		local xml = ""
-		local slots = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.95, -0.5 }, { 0, 0.95, 0.5 } }
-		for i = 1, #slots do
-			local sp = Vec(slots[i][1], 0.05 + slots[i][2] + server.calib.f[2] * 0.9, slots[i][3])
-			origins[i] = TransformToParentPoint(Transform(floor, rot), sp)
-			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. fmt3(sp) .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
+		for i = 1, #CRATE_SLOTS do
+			local s = CRATE_SLOTS[i]
+			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. fmt3(Vec(s[1], s[2] + 0.5, s[3])) .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
+			groups[i] = { slot = Vec(s[1], s[2], s[3]) }
 		end
 		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
 	elseif name == "car" then
 		trimAmmo(1)
-		-- the game's own small car if its prefab can be spawned, else the mod's car body
-		local t = Transform(VecAdd(floor, Vec(0, 0.05 + server.calib.f[2] * 1.5, 0)), QuatRotateQuat(rot, QuatEuler(0, 90, 0)))
+		-- the game's own small car if its prefab can be spawned, else the mod's car body; it is wider than
+		-- the bucket, so it lies on the rim
+		local t = Transform(VecAdd(floor, Vec(0, 2.0, 0)), QuatRotateQuat(rot, QuatEuler(0, 90, 0)))
 		ents = Spawn("BUILT-IN/prefab/vehicle/land/generic_small_blue.xml", t)
 		local any = false
 		for i = 1, #(ents or {}) do if GetEntityType(ents[i]) == "body" then any = true SetTag(ents[i], "catapult_ammo") end end
 		if not any then
 			ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/hulk.vox' scale='3' tags='catapult_ammo'/></body>", t)
 		end
+		groups[1] = { slot = Vec(0, 0, 0), rim = true, all = true }
 	end
-	-- the loaded ammo is held gently where it lies in the bucket while the catapult stands
-	-- (aiming and turning cannot shake it out); anything else in the bucket rests freely
-	-- In-game 11.10 the hold point was read from GetBodyTransform / GetBodyCenterOfMass in the spawn
-	-- tick, when a just-spawned body's data is not ready: the load was pulled into the bucket floor and
-	-- into itself (half of the crates out of sight) and out of reach of the throw. Now each body's
-	-- origin is held at the point it was spawned at (known from the spawn text), or, for the game's
-	-- car with its wheels, at the point it is at once its shapes are ready.
-	local armT = GetBodyTransform(c.arm)
-	c.loadedBodies = {}
-	local nb = 0
+	local bodies = {}
 	for i = 1, #(ents or {}) do
 		if GetEntityType(ents[i]) == "body" then
-			local b = ents[i]
-			nb = nb + 1
-			server.ammo[#server.ammo + 1] = { body = b, kind = name, cat = c.id }
-			local o = origins[nb]
-			c.loadedBodies[#c.loadedBodies + 1] = { body = b, off = o and TransformToLocalPoint(armT, o) or nil }
+			bodies[#bodies + 1] = ents[i]
+			server.ammo[#server.ammo + 1] = { body = ents[i], kind = name, cat = c.id }
 		end
 	end
+	-- one body per group (crates: in spawn order), or all bodies in one group (the car and its wheels)
+	for i, g in ipairs(groups) do
+		g.bodies = g.all and bodies or { bodies[i] }
+		g.placed = false
+		g.tries = 0
+	end
+	c.groups = groups
 	c.loaded = name
+	c.loadMoved = nil
 	-- for the debug line (11.10: "the ammo sometimes does not spawn at all")
-	c.loadDbg = string.format("load %s: Spawn gave %d entities, %d bodies", name, #(ents or {}), nb)
-	print("catapult: " .. c.loadDbg)
+	c.loadDbg = string.format("%s: Spawn gave %d entities, %d bodies", name, #(ents or {}), #bodies)
+	print("catapult: load " .. c.loadDbg)
+end
+
+-- once a load group exists (real bounds), move it so that it lies on the bucket floor (the car on the
+-- rim), at its slot, at rest; then hold it there. In-game 16.10 "the ammo spawns crooked": it was put
+-- where a guessed pivot said, not where it really was.
+function server.placeLoad(c)
+	local floor = server.bucketFloor(c)
+	local rot = GetBodyTransform(c.frame).rot
+	local armT = GetBodyTransform(c.arm)
+	for _, g in ipairs(c.groups or {}) do
+		if not g.placed and #g.bodies > 0 then
+			g.tries = g.tries + 1
+			local ready = true
+			for _, b in ipairs(g.bodies) do if not (IsHandleValid(b) and server.bodyReady(b)) then ready = false end end
+			if ready then
+				local mn, mx = groupBounds(g.bodies)
+				local bottom = Vec((mn[1] + mx[1]) / 2, mn[2], (mn[3] + mx[3]) / 2)
+				local base = g.rim and Vec(floor[1], server.bucketRim(c), floor[3]) or floor
+				local target = VecAdd(TransformToParentPoint(Transform(base, rot), g.slot), Vec(0, 0.02, 0))
+				local d = VecSub(target, bottom)
+				for _, b in ipairs(g.bodies) do
+					local t = GetBodyTransform(b)
+					SetBodyTransform(b, Transform(VecAdd(t.pos, d), t.rot))
+					SetBodyVelocity(b, Vec(0, 0, 0))
+					SetBodyAngularVelocity(b, Vec(0, 0, 0))
+				end
+				g.placed = true
+				g.offs = {}
+				for i, b in ipairs(g.bodies) do g.offs[i] = TransformToLocalPoint(armT, VecAdd(GetBodyTransform(b).pos, Vec(0, 0, 0))) end
+				c.loadMoved = math.max(c.loadMoved or 0, VecLength(d))
+			elseif g.tries > 60 then
+				g.placed = true            -- give up placing; it rests where it is (shown as not in the bucket)
+				g.offs = {}
+			end
+		end
+	end
+end
+
+-- how many load groups lie in the bucket: centre over the bucket, bottom between the floor and the rim
+function server.loadInBucket(c)
+	local n, m = 0, 0
+	local floor = server.bucketFloor(c)
+	local rim = server.bucketRim(c)
+	local lowest = nil
+	for _, g in ipairs(c.groups or {}) do
+		m = m + 1
+		local alive = #g.bodies > 0
+		for _, b in ipairs(g.bodies) do if not IsHandleValid(b) then alive = false end end
+		if alive then
+			local mn, mx = groupBounds(g.bodies)
+			local cx, cz = (mn[1] + mx[1]) / 2, (mn[3] + mx[3]) / 2
+			if math.sqrt((cx - floor[1]) ^ 2 + (cz - floor[3]) ^ 2) < 1.3 and mn[2] > floor[2] - 0.3 and mn[2] < rim + 0.6 then
+				n = n + 1
+				lowest = math.min(lowest or 99, mn[2] - floor[2])
+			end
+		end
+	end
+	return n, m, lowest
 end
 
 function server.fire(c)
 	if c.broken or c.state ~= "ready" then return end
 	local bodies, players = server.contents(c)
+	-- also every body of the loaded groups (a car's wheels may stick out of the bucket's box)
+	local seen = {}
+	for _, b in ipairs(bodies) do seen[b] = true end
+	for _, g in ipairs(c.groups or {}) do
+		for _, b in ipairs(g.bodies) do if IsHandleValid(b) and not seen[b] and VecLength(VecSub(GetBodyTransform(b).pos, server.bucketFloor(c))) < 4 then bodies[#bodies + 1] = b seen[b] = true end end
+	end
 	local armT = GetBodyTransform(c.arm)
 	c.held = {}
 	for i = 1, #bodies do
@@ -526,12 +658,9 @@ function server.fire(c)
 	end
 	c.state = "swing"
 	c.t = 0
-	c.signChecked = false
-	c.psiStart = server.psi(c)
-	c.psiPrev = c.psiStart
 	c.release = 90 - c.angle
-	c.timeout = math.rad(c.release - c.psiStart) / SWING + 0.35
-	SetJointMotor(c.joint, c.sign * SWING)
+	c.shotFrom = c.psiRest + c.theta
+	c.shotTo = c.shotFrom
 	shared.cp.fireN = shared.cp.fireN + 1
 	local fp = GetBodyTransform(c.frame).pos
 	shared.cp.fx, shared.cp.fy, shared.cp.fz = fp[1], fp[2], fp[3]
@@ -558,12 +687,12 @@ function server.releaseLoad(c)
 		SetPlayerVelocity(v, hp.p)
 		server.protect[hp.p] = { t = 0 }
 	end
-	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = server.psi(c), held = #c.held + #c.heldPlayers }
+	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = c.psiRest + c.theta, held = #c.held + #c.heldPlayers }
+	c.lastShot = string.format("last shot: angle %+.0f -> %+.0f, released %d at %.0f m/s", c.shotFrom or 0, c.psiRest + c.theta, #c.held + #c.heldPlayers, speed)
 	c.held = {}
 	c.heldPlayers = {}
 	c.loaded = nil
-	c.loadedBodies = {}
-	SetJointMotor(c.joint, 0)                  -- brake right away so the bucket does not catch the load
+	c.groups = {}
 	c.state = "reset"
 	c.t = 0
 	shared.cp.relN = shared.cp.relN + 1
@@ -574,53 +703,49 @@ function server.update(dt)
 	server.stepPending()
 	for i = #server.cats, 1, -1 do
 		local c = server.cats[i]
-		if not IsHandleValid(c.frame) or not IsHandleValid(c.arm) or (c.joint ~= 0 and IsJointBroken(c.joint)) then
+		if not IsHandleValid(c.frame) or not IsHandleValid(c.arm) or not IsHandleValid(c.axle) or not IsHandleValid(c.hub) then
 			if not c.broken then c.broken = true c.state = "broken" server.sync() end
 		elseif c.state == "settle" then
 			c.t = c.t + dt
+			server.holdArm(c, 0)
 			local amn, amx = GetShapeBounds(c.axle)
 			local bmn, bmx = GetShapeBounds(c.bucket)
 			if c.t > 0.05 and validBounds(amn, amx) and validBounds(bmn, bmx) then
-				server.debugInfo(c)
 				c.psiRest = server.psi(c)
 				c.armLen = VecLength(VecSub(server.bucketCentre(c), server.pivot(c)))
 				c.state = "ready"
 				c.t = 0
 				server.load(c, c.ammo)
+				server.debugInfo(c)
 				server.sync()
 			end
 		elseif c.state == "ready" then
-			SetJointMotorTarget(c.joint, 0, 1.5)
+			c.theta = 0
+			server.holdArm(c, 0)
+			server.placeLoad(c)
+			local armT = GetBodyTransform(c.arm)
+			for _, g in ipairs(c.groups or {}) do
+				if g.placed then
+					for k, b in ipairs(g.bodies) do
+						if IsHandleValid(b) and g.offs[k] then
+							ConstrainPosition(b, 0, GetBodyTransform(b).pos, TransformToParentPoint(armT, g.offs[k]), 4)
+						end
+					end
+				end
+			end
 			c.dbgT = (c.dbgT or 0) - dt
 			if c.dbgT <= 0 then c.dbgT = 0.5 server.debugInfo(c) server.sync() end
-			local armT = GetBodyTransform(c.arm)
-			for j = 1, #(c.loadedBodies or {}) do
-				local h = c.loadedBodies[j]
-				if IsHandleValid(h.body) and server.bodyReady(h.body) then
-					local bp = GetBodyTransform(h.body).pos
-					if not h.off then h.off = TransformToLocalPoint(armT, bp) end
-					ConstrainPosition(h.body, c.arm, bp, TransformToParentPoint(armT, h.off), 4)
-				end
-			end
 		elseif c.state == "swing" then
 			c.t = c.t + dt
-			c.dbgT = (c.dbgT or 0) - dt
-			if c.dbgT <= 0 then c.dbgT = 0.1 server.debugInfo(c) server.sync() end
-			local psi = server.psi(c)
-			-- the hinge's sign convention is unknown: if the arm goes the wrong way, reverse once
-			if not c.signChecked and c.t > 0.06 then
-				c.signChecked = true
-				if psi < c.psiStart - 0.5 then
-					c.sign = -c.sign
-					SetJointMotor(c.joint, c.sign * SWING)
-				end
-			end
-			local armT = GetBodyTransform(c.arm)
+			c.theta = c.theta + SWING * dt
+			server.holdArm(c, SWING)
+			local psi = c.psiRest + c.theta
+			c.shotTo = psi
+			local armT = server.armPose(c, c.theta)
 			for j = 1, #c.held do
 				local h = c.held[j]
 				if IsHandleValid(h.body) then
-					local bp = GetBodyTransform(h.body).pos
-					ConstrainPosition(h.body, c.arm, bp, TransformToParentPoint(armT, h.off), 80)
+					ConstrainPosition(h.body, 0, GetBodyTransform(h.body).pos, TransformToParentPoint(armT, h.off), 80)
 				end
 			end
 			for j = 1, #c.heldPlayers do
@@ -628,12 +753,20 @@ function server.update(dt)
 				SetPlayerTransform(Transform(TransformToParentPoint(armT, hp.off), GetPlayerTransform(hp.p).rot), hp.p)
 				SetPlayerVelocity(Vec(0, 0, 0), hp.p)
 			end
-			if psi >= c.release or c.t >= c.timeout then server.releaseLoad(c) server.sync() end
-			c.psiPrev = psi
+			c.dbgT = (c.dbgT or 0) - dt
+			if c.dbgT <= 0 then c.dbgT = 0.1 server.debugInfo(c) server.sync() end
+			if psi >= c.release or c.theta >= 170 then server.releaseLoad(c) server.debugInfo(c) server.sync() end
 		elseif c.state == "reset" then
 			c.t = c.t + dt
-			if c.t > 0.5 then SetJointMotorTarget(c.joint, 0, 1.2) end
-			if c.t > 1.0 and (math.abs(GetJointMovement(c.joint)) < 3 or c.t > 4) then
+			local w = 0
+			if c.t > 0.5 and c.theta > 0 then
+				c.theta = math.max(0, c.theta - RESET * dt)
+				w = -RESET
+			end
+			server.holdArm(c, w)
+			c.dbgT = (c.dbgT or 0) - dt
+			if c.dbgT <= 0 then c.dbgT = 0.25 server.debugInfo(c) server.sync() end
+			if c.t > 1.0 and c.theta <= 0 then
 				c.state = "ready"
 				c.t = 0
 				if s.reload then server.load(c, c.ammo) end
@@ -691,50 +824,54 @@ function server.updateFlying(dt, s)
 	server.sync()
 end
 
--- one line of measured numbers for in-game diagnosis
-function server.debugInfo(c)
-	local cal = c.calib or server.calib or { f = Vec(0, 0, 0), measured = false, zUp = true }
-	local fmn = Vec(0, 0, 0)
-	for _, sh in ipairs(GetBodyShapes(c.frame)) do
-		local mn = GetShapeBounds(sh)
-		fmn = mn
-		break
-	end
-	local base = GetBodyTransform(c.frame).pos
-	local ax = server.pivot(c)
-	local bk = server.bucketFloor(c)
-	local v = GetBodyVelocity(c.arm)
-	-- what the hinge really joins (11.10: the arm did not move) and how much of the load lies in the bucket
-	local hinge = "none"
-	if c.joint ~= 0 then
-		local other = (c.hub ~= 0) and GetJointOtherShape(c.joint, c.hub) or 0
-		if IsJointBroken(c.joint) then hinge = "BROKEN"
-		elseif other == c.axle then hinge = "hub-axle"
-		elseif other == 0 then hinge = "hub-nothing"
-		elseif GetShapeBody(other) == c.arm then hinge = "hub-own arm!"
-		else hinge = "hub-other shape" end
-	end
-	local inBucket = #(server.contents(c))
-	-- where each arm part really is against its designed centre (m, catapult space x / up / back)
-	local parts = ""
-	local frameT = Transform(c.base, QuatEuler(0, c.yaw, 0))
-	for _, n in ipairs({ "hub", "beam_long", "beam_short", "bucket", "weight" }) do
-		local sh = ({ hub = c.hub, beam_long = c.beamLong, beam_short = c.beamShort, bucket = c.bucket, weight = c.weight })[n] or 0
-		if sh ~= 0 and c.design and c.design[n] and IsHandleValid(sh) then
-			local d = TransformToLocalVec(frameT, VecSub((boundsCentre(sh)), TransformToParentPoint(frameT, c.design[n])))
-			parts = parts .. string.format(" %s %.1f/%.1f/%.1f", n, d[1], d[2], d[3])
+-- how far each part is from where it should be now (frame parts: designed place; arm parts: designed
+-- place turned by the current arm angle), metres
+function server.partsOff(c)
+	local fT = server.catT(c)
+	local P = TransformToParentPoint(fT, c.pivotLocal)
+	local axis = QuatRotateVec(fT.rot, Vec(1, 0, 0))
+	local q = QuatAxisAngle(axis, -c.theta)
+	local shapes = { frame = c.frameShape, axle = c.axle, hub = c.hub, beam_long = c.beamLong, beam_short = c.beamShort, bucket = c.bucket, weight = c.weight }
+	local out, worst = {}, 0
+	for _, n in ipairs(PARTS) do
+		local sh = shapes[n]
+		local d = 99
+		if sh and sh ~= 0 and IsHandleValid(sh) then
+			local want = TransformToParentPoint(fT, c.design[n].c)
+			if ARM_PARTS[n] then want = VecAdd(P, QuatRotateVec(q, VecSub(want, P))) end
+			d = VecLength(VecSub((boundsCentre(sh)), want))
 		end
+		out[n] = d
+		worst = math.max(worst, d)
 	end
-	local js = (c.joint ~= 0) and #(GetJointShapes(c.joint) or {}) or 0
-	local first = c.loadedBodies and c.loadedBodies[1]
-	local lp = ""
-	if first and IsHandleValid(first.body) then
-		local d = TransformToLocalVec(frameT, VecSub(GetBodyTransform(first.body).pos, bk))
-		lp = string.format(", load at %.1f/%.1f/%.1f from floor", d[1], d[2], d[3])
-	elseif first then lp = ", load GONE" end
-	c.dbg = string.format("catapult: %s | pivot %.2f %.2f %.2f%s%s | ground %.2f | frame bottom %+.2f | axle %+.2f (want +%.1f) | bucket floor %+.2f | hinge %s | arm %.1f m/s, angle %.0f | load %d/%d in bucket%s | %s | joint shapes %d | parts off%s",
-		c.state, cal.f[1], cal.f[2], cal.f[3], cal.measured and "" or " (default)", cal.zUp and "" or " y-up", base[2], fmn[2] - base[2], ax[2] - base[2], AXY,
-		bk[2] - base[2], hinge, VecLength(v), server.psi(c), inBucket, #(c.loadedBodies or {}), lp, c.loadDbg or "no load yet", js, parts)
+	return out, worst
+end
+-- the hub's distance from the axle's axis (the scripted hinge holds it at 0)
+function server.hubOffAxle(c)
+	local ac = server.pivot(c)
+	local axis = QuatRotateVec(GetBodyTransform(c.frame).rot, Vec(1, 0, 0))
+	local d = VecSub((boundsCentre(c.hub)), ac)
+	return VecLength(VecSub(d, VecScale(axis, VecDot(d, axis))))
+end
+
+-- three lines of measured numbers for in-game diagnosis (16.10: one long line was cut off by the
+-- screen edge)
+function server.debugInfo(c)
+	local off = server.partsOff(c)
+	local parts = ""
+	for _, n in ipairs(PARTS) do parts = parts .. string.format(" %s %.2f", n, off[n]) end
+	local hub = server.hubOffAxle(c)
+	local hinge = string.format("hinge script hub%s %.2f m (no joint)", hub <= TOL and "-axle" or " OFF the axle", hub)
+	local n, m, lowest = server.loadInBucket(c)
+	local placed = 0
+	for _, g in ipairs(c.groups or {}) do if g.placed then placed = placed + 1 end end
+	local l1 = string.format("catapult: %s | parts off m:%s | spawns %d", c.state, parts, c.spawns or 0)
+	local l2 = string.format("%s | arm angle %+.0f (rest %+.0f) | %s | fire: Q or E",
+		hinge, server.psi(c), c.psiRest or -REST, c.lastShot or "no shot yet")
+	local l3 = string.format("load %d/%d in bucket | %s | placed %d/%d%s%s", n, m, c.loadDbg or "no load yet", placed, #(c.groups or {}),
+		c.loadMoved and string.format(", moved into place by %.2f m", c.loadMoved) or "",
+		lowest and string.format(", lowest %.2f m above the floor", lowest) or "")
+	c.dbg = l1 .. "\n" .. l2 .. "\n" .. l3
 end
 
 -- client commands
@@ -751,24 +888,26 @@ function server.cmd(p, id, what, value)
 	server.sync()
 end
 
--- turn the whole machine (frame, arm and whatever is in the bucket) about its base
+-- turn the whole machine (frame, arm and whatever is in the bucket) about its base; the arm's pose is
+-- kept relative to the frame, so it follows the frame
 function server.turn(c, deg)
 	local oldT = Transform(c.base, QuatEuler(0, c.yaw, 0))
 	c.yaw = c.yaw + deg
 	local newT = Transform(c.base, QuatEuler(0, c.yaw, 0))
 	local bodies = server.contents(c)
-	local all = { c.frame, c.arm }
+	local all = { c.frame }
 	for i = 1, #bodies do all[#all + 1] = bodies[i] end
 	for i = 1, #all do
 		local rel = TransformToLocalTransform(oldT, GetBodyTransform(all[i]))
 		SetBodyTransform(all[i], TransformToParentTransform(newT, rel))
 	end
+	server.holdArm(c, 0)
 end
 
 -- R: everything this mod ever spawned goes, found by tag (also pieces broken off, catapults that
 -- were never registered, and parts tagged by the first version: catapult / catapult_arm)
 function server.clear()
-	for _, tag in ipairs({ "catapult_part", "catapult_ammo", "catapult", "catapult_arm", "catapult_barrel" }) do
+	for _, tag in ipairs({ "catapult_part", "catapult_ammo", "catapult", "catapult_arm", "catapult_barrel", "catapult_measure" }) do
 		local list = FindBodies(tag, true)
 		for i = 1, #list do if IsHandleValid(list[i]) then Delete(list[i]) end end
 		local shapes = FindShapes(tag, true)
@@ -780,6 +919,7 @@ function server.clear()
 		if IsHandleValid(c.frame) then Delete(c.frame) end
 	end
 	for i = 1, #server.ammo do if IsHandleValid(server.ammo[i].body) then Delete(server.ammo[i].body) end end
+	if server.pending then deleteSpawned(server.pending.ents) server.pending = nil end
 	server.cats = {}
 	server.ammo = {}
 	server.flying = {}
@@ -870,11 +1010,13 @@ function client.tick(dt)
 		SetBool("game.input.locktool", true)           -- the wheel sets the power
 		local wheel = InputValue("mousewheel")
 		if wheel ~= 0 then ServerCall("server.cmd", me, c.id, "power", clamp(c.power + 0.05 * wheel, 0, 1)) end
-		if InputPressed("f") then ServerCall("server.cmd", me, c.id, "fire", 0) end
-		if InputPressed("x") then ServerCall("server.cmd", me, c.id, "angle", c.angle - 5) end
-		if InputPressed("v") then ServerCall("server.cmd", me, c.id, "angle", c.angle + 5) end
+		-- Q fires: F is the game's flashlight and C its camera view (data/input_settings.xml), so the
+		-- fire key moved off F and turning off C (in-game 16.10: "F turns the flashlight on")
+		if InputPressed("q") then ServerCall("server.cmd", me, c.id, "fire", 0) end
+		if InputPressed("v") then ServerCall("server.cmd", me, c.id, "angle", c.angle - 5) end
+		if InputPressed("b") then ServerCall("server.cmd", me, c.id, "angle", c.angle + 5) end
 		for k = 1, 4 do if InputPressed(tostring(k)) then ServerCall("server.cmd", me, c.id, "ammo", k) end end
-		local turn = (InputDown("z") and 1 or 0) - (InputDown("c") and 1 or 0)
+		local turn = (InputDown("z") and 1 or 0) - (InputDown("x") and 1 or 0)
 		client.turnAcc = client.turnAcc + turn * 30 * dt
 		client.turnT = client.turnT + dt
 		if client.turnT > 0.1 and math.abs(client.turnAcc) > 0.01 then
@@ -897,8 +1039,8 @@ end
 -- until it meets the world. Returns points, landing point, horizontal range from the release.
 function client.predict(c)
 	if c.axle == 0 or c.bucket == 0 or not IsHandleValid(c.axle) or not IsHandleValid(c.bucket) then return nil end
-	local sx, sy, sz, vs = GetShapeSize(c.axle)
-	local P = TransformToParentPoint(GetShapeWorldTransform(c.axle), Vec(sx * vs * 0.5, sy * vs * 0.5, sz * vs * 0.5))
+	local amn, amx = GetShapeBounds(c.axle)
+	local P = VecLerp(amn, amx, 0.5)
 	local back = QuatRotateVec(GetBodyTransform(c.frame).rot, Vec(0, 0, 1))
 	local psi = math.rad(90 - c.angle)
 	local R = VecAdd(P, VecAdd(VecScale(back, c.armLen * math.cos(psi)), Vec(0, c.armLen * math.sin(psi), 0)))
@@ -987,16 +1129,21 @@ function client.draw(dt)
 	if GetPlayerTool() ~= TOOL then return end
 	local sel = client.sel
 	if readSettings().debug then
-		local line = (sel and sel.dbg and sel.dbg ~= "") and sel.dbg or "catapult: none selected"
+		local text = (sel and sel.dbg and sel.dbg ~= "") and sel.dbg or "catapult: none selected"
+		local lines = {}
+		for l in (text .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = l end
 		local reason = shared.cp.reason or ""
-		if reason ~= "" then line = line .. " | " .. reason end
+		if reason ~= "" then lines[#lines + 1] = reason end
 		UiPush()
-			UiTranslate(20, UiHeight() - 24)
+			UiTranslate(20, UiHeight() - 24 - 22 * (#lines - 1))
 			UiAlign("left middle")
 			UiFont("regular.ttf", 16)
 			UiTextShadow(0, 0, 0, 0.8, 1)
 			UiColor(1, 1, 0.6, 0.95)
-			UiText(line)
+			for i = 1, #lines do
+				UiText(lines[i])
+				UiTranslate(0, 22)
+			end
 		UiPop()
 	end
 	if GetBool("game.ui.hidemods") or not GetPlayerCanUseTool() then return end
@@ -1021,8 +1168,8 @@ function client.draw(dt)
 			UiTranslate(0, 26)
 			UiFont("regular.ttf", 18)
 			UiColor(1, 1, 1, 0.8)
-			UiText(tr("F or E: fire   Wheel: power   Z/C: turn   X/V: angle   1-4: ammo   RMB: load   R: remove all",
-				"F или E: выстрел   Колесо: сила   Z/C: поворот   X/V: угол   1-4: снаряд   ПКМ: зарядить   R: убрать все"))
+			UiText(tr("Q or E: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   RMB: load   R: remove all",
+				"Q или E: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   ПКМ: зарядить   R: убрать все"))
 		else
 			UiText(tr("LMB: place a catapult in front of you   R: remove all", "ЛКМ: поставить катапульту перед собой   R: убрать все"))
 		end

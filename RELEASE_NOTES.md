@@ -4,6 +4,11 @@
 
 ## English
 
+### 2026-10-16 (night) - catapult appears again, drone keeps reacting, replay camera stays above the ground
+
+- **Catapult**: it did not appear at all ("refused: missing frame among 2 bodies / 7 shapes"). The game created every part, but the mod recognised the parts by the size of their model files, and the game counts only the filled voxels: the frame's model has empty outer columns, so its size did not match. Now every part carries its own tag and is recognised by it (the size and the frame body are fallbacks).
+- **Camera Drone**: it stopped reacting to the keys after a few seconds of flight. In the game the drone flies on its fallback (the body is moved by the mod). Since the 16.10 review it tried every 3 s whether normal flight works again: it made the body dynamic and read its velocity back. A body that was static is not simulated again by that alone, so the test velocity was just read back, the test "passed" and the drone stood still in a mode that never noticed it. Now the test wakes the body and checks that it really moved, and normal flight checks real movement too.
+
 ### 2026-10-16 (evening) - no key does two things when several mods are on
 
 - **Gravity Change**: key G or K (J is gone: it is Time Slow's speed key). If the game resets the gravity while the mod has another one chosen (for example after a quick load), the mod sets its gravity again; on Earth it never touches the level's gravity.
@@ -45,6 +50,11 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 16.10.2026 (ночь) - катапульта снова ставится, дрон не перестаёт слушаться, камера повтора не уходит в землю
+
+- **Катапульта**: не ставилась совсем («refused: missing frame among 2 bodies / 7 shapes»). Игра создавала все детали, но мод узнавал их по размеру файла модели, а игра считает только заполненные воксели: у станины крайние столбцы пустые, и размер не совпадал. Теперь у каждой детали своя метка, и мод узнаёт деталь по ней (размер и тело станины - запасные способы).
+- **Дрон с камерой**: через несколько секунд полёта переставал слушаться клавиш. В игре дрон летит на запасном режиме (тело двигает сам мод). С проверки 16.10 он каждые 3 с пробовал, работает ли обычный полёт: делал тело динамическим и читал его скорость. Тело, которое было статическим, от этого снова не просчитывается, скорость просто читалась обратно, проба «удавалась», и дрон замирал в режиме, который этого не замечал. Теперь проба будит тело и проверяет, что оно правда сдвинулось, а обычный полёт тоже смотрит на настоящее движение.
 
 ### 16.10.2026 (вечер) - одна клавиша больше не делает два дела, когда включено несколько модов
 

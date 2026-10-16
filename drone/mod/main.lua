@@ -283,6 +283,10 @@ function server.fly(p, d, dt)
 	local bt = GetBodyTransform(d.body)
 	local vel = GetBodyVelocity(d.body)
 	local g = GetGravity()
+	-- how the body really moved since the last step. GetBodyVelocity is not enough: on a body that is
+	-- not simulated it reads back what we set, while the body stands still (in-game 16.10 23:13)
+	local moved = (d.prevPos and dt > 0) and VecScale(VecSub(bt.pos, d.prevPos), 1 / dt) or vel
+	d.prevPos = VecCopy(bt.pos)
 
 	-- crash: the velocity is not what our controller left it at (something hit us)
 	if d.mode == "kinematic" then
@@ -325,7 +329,7 @@ function server.fly(p, d, dt)
 		local stuck
 		if want > 1 then
 			local dir = VecScale(desired, 1 / want)
-			stuck = VecDot(vel, dir) < 0.3 * want
+			stuck = VecDot(moved, dir) < 0.3 * want
 			if stuck then
 				-- something in the way (a wall) is not "stuck"
 				QueryRejectBody(d.body)
@@ -395,6 +399,7 @@ function server.goKinematic(d, st, bt)
 	d.kinN = (d.kinN or 0) + 1
 	d.kinT = 0
 	d.trial = nil
+	d.prevPos = nil
 	SetBodyDynamic(d.body, false)
 end
 
@@ -405,13 +410,18 @@ function server.goVelocity(d, st, bt)
 	d.expect = nil
 	d.stuckT = nil
 	d.refY = bt.pos[2]
+	d.prevPos = VecCopy(bt.pos)
 end
 
 -- kinematic flight: the body is static and moved every physics step; it stops at walls
 function server.flyKinematic(p, d, dt, st, s)
 	if d.trial then
-		-- last step was a velocity test: did the body keep the velocity we set?
-		local ok = VecLength(VecSub(GetBodyVelocity(d.body), d.trial)) < 0.3
+		-- last step was a velocity test: did the body really MOVE with the velocity we set? (in-game 16.10
+		-- 23:13 "the drone stopped reacting to the keys": a body made static and then dynamic again is not
+		-- simulated, GetBodyVelocity read the test velocity back, the test passed and the drone stood still
+		-- in velocity mode for good)
+		local moved = VecScale(VecSub(GetBodyTransform(d.body).pos, d.trialFrom), 1 / math.max(d.trialDt, 1e-4))
+		local ok = VecLength(VecSub(moved, d.trial)) < 0.3 and VecLength(VecSub(GetBodyVelocity(d.body), d.trial)) < 0.3
 		d.trial = nil
 		if ok then
 			server.goVelocity(d, st, GetBodyTransform(d.body))
@@ -454,7 +464,10 @@ function server.flyKinematic(p, d, dt, st, s)
 	if motors and not lost and d.kinT >= math.min(60, 3 * 2 ^ ((d.kinN or 1) - 1)) then
 		d.kinT = 0
 		d.trial = VecAdd(d.kvel, Vec(0, 0.5, 0))
+		d.trialFrom = VecCopy(d.kpos)
+		d.trialDt = dt
 		SetBodyDynamic(d.body, true)
+		SetBodyActive(d.body, true)         -- back into the simulation (a static body was taken out of it)
 		SetBodyVelocity(d.body, VecSub(d.trial, VecScale(GetGravity(), dt)))
 	end
 	st.thrust = motors and clamp(0.35 + VecLength(d.kvel) / s.speed * 0.65, 0, 1) or 0

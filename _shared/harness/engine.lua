@@ -599,10 +599,21 @@ A.IsBodyDynamic = function(h)
 	if b and H.spawnModel and H.spawnModel.dynamicDelay and b.spawnFrame and H.frame - b.spawnFrame < H.spawnModel.dynamicDelay then return false end
 	return b ~= nil and b.dynamic
 end
-A.SetBodyDynamic = function(h, d) local b = B(h, "SetBodyDynamic"); if b then b.dynamic = d end end
+-- H.sleepModel (IsBodyActive in script_defs: "only dynamic bodies can be active"): a body made static
+-- is taken out of the simulation, and making it dynamic again does not put it back; with
+-- sleepModel.velocityWakes == false a SetBodyVelocity on such a body is only stored (GetBodyVelocity
+-- returns it) and the body does not move until SetBodyActive(h, true) or a hit wakes it
+A.SetBodyDynamic = function(h, d)
+	local b = B(h, "SetBodyDynamic")
+	if not b then return end
+	b.dynamic = d
+	if H.sleepModel and not d then b.active = false end
+end
 A.SetBodyVelocity = function(h, v)
 	local b = B(h, "SetBodyVelocity")
-	if b and not H.ignoreBodyVelocity then b.vel = A.VecCopy(v); b.active = true end
+	if not b or H.ignoreBodyVelocity then return end
+	b.vel = A.VecCopy(v)
+	if not (H.sleepModel and H.sleepModel.velocityWakes == false and b.active == false) then b.active = true end
 end
 A.GetBodyVelocity = function(h) local b = B(h, "GetBodyVelocity"); if not b then return V() end return A.VecCopy(b.vel) end
 A.GetBodyVelocityAtPos = function(h, p) local b = B(h, "GetBodyVelocityAtPos"); if not b then return V() end return A.VecAdd(b.vel, A.VecCross(b.angvel, A.VecSub(p, b.pos))) end
@@ -1752,6 +1763,13 @@ A.GetShapeSize = function(h)
 	local s = H.shapes[h]
 	if not s then return 0, 0, 0, 0.1 end
 	local sz = shapeSize(s)
+	-- H.spawnModel.trimEmpty: the size counts only the filled voxels (empty border rows of the .vox are
+	-- not part of the shape). In-game 16.10 23:13 the catapult refused "missing frame among 2 bodies /
+	-- 7 shapes": all 7 parts were there, but the frame - the only part whose .vox has empty columns
+	-- (26 wide, filled x 2..23) - was not recognised by its file size 26x32x38
+	if H.spawnModel and H.spawnModel.trimEmpty and s.cmin then
+		return s.cmax[1] - s.cmin[1], s.cmax[2] - s.cmin[2], s.cmax[3] - s.cmin[3], s.voxelSize or 0.1
+	end
 	return sz[1], sz[2], sz[3], s.voxelSize or 0.1
 end
 A.GetShapeVoxelCount = function(h)

@@ -86,11 +86,15 @@ end
 
 function launchSpeed(power) return V_MIN + (V_MAX - V_MIN) * clamp(power, 0, 1) end
 
--- the parts, which body they belong to, and how they are recognised (sorted voxel sizes)
+-- the parts, which body they belong to, and how they are recognised: by their own tag (catapult_p_<name>),
+-- else by their size in voxels (sorted). In-game 16.10 23:13 the frame was not recognised by the size of
+-- its .vox (26x32x38): the game counts only the filled voxels, and the frame's outer columns are empty
+-- (filled 22 wide) - "refused: missing frame among 2 bodies / 7 shapes". Both sizes are listed.
 local PARTS = { "frame", "axle", "hub", "beam_long", "beam_short", "bucket", "weight" }
 local ARM_PARTS = { hub = true, beam_long = true, beam_short = true, bucket = true, weight = true }
-local PART_DIMS = { ["26x32x38"] = "frame", ["4x4x26"] = "axle", ["6x6x6"] = "hub", ["2x2x30"] = "beam_long",
+local PART_DIMS = { ["26x32x38"] = "frame", ["22x32x38"] = "frame", ["4x4x26"] = "axle", ["6x6x6"] = "hub", ["2x2x30"] = "beam_long",
 	["2x2x8"] = "beam_short", ["5x9x9"] = "bucket", ["8x8x8"] = "weight" }
+local function partTag(n) return "catapult_p_" .. n end
 
 -- the designed layout (catapult space, metres): the centre of every part and its tilt about x. The
 -- frame stands on the ground, the axle lies on its bearings at 9.6 m, the arm hangs in its rest pose
@@ -123,7 +127,7 @@ local function prefab(fix, still)
 	local function vox(n)
 		local p = VecAdd(lay[n].c, fix[n] or Vec(0, 0, 0))
 		if ARM_PARTS[n] then p = VecSub(p, P) end
-		return "<vox file='MOD/vox/" .. n .. ".vox' scale='" .. SCALE .. "' pos='" .. fmt3(p) .. "' rot='" .. lay[n].tilt .. " 0 0' tags='" .. tag .. "'/>"
+		return "<vox file='MOD/vox/" .. n .. ".vox' scale='" .. SCALE .. "' pos='" .. fmt3(p) .. "' rot='" .. lay[n].tilt .. " 0 0' tags='" .. tag .. " " .. partTag(n) .. "'/>"
 	end
 	local frameTags = still and "catapult_part catapult_measure" or "catapult catapult_part interact=Fire"
 	local armTags = still and "catapult_part catapult_measure" or "catapult_arm catapult_part interact=Fire"
@@ -149,14 +153,26 @@ end
 
 -- the parts among the handles Spawn returned
 local function findParts(ents)
-	local parts, bodies = {}, {}
+	local parts, bodies, shapes = {}, {}, {}
 	for i = 1, #(ents or {}) do
 		local e = ents[i]
 		local ty = GetEntityType(e)
 		if ty == "body" then bodies[#bodies + 1] = e
 		elseif ty == "shape" then
-			local n = PART_DIMS[shapeDims(e)]
+			shapes[#shapes + 1] = e
+			local n = nil
+			for _, pn in ipairs(PARTS) do if HasTag(e, partTag(pn)) then n = pn end end
+			n = n or PART_DIMS[shapeDims(e)]
 			if n and not parts[n] then parts[n] = e end
+		end
+	end
+	-- the frame is also the frame body's one other shape besides the axle
+	if not parts.frame and parts.axle then
+		local fb = GetShapeBody(parts.axle)
+		for _, sh in ipairs(shapes) do
+			local used = false
+			for _, pn in ipairs(PARTS) do if parts[pn] == sh then used = true end end
+			if not used and GetShapeBody(sh) == fb then parts.frame = sh break end
 		end
 	end
 	return parts, bodies

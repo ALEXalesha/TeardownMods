@@ -99,7 +99,8 @@ function server.tick(dt)
 				if InputPressed("usetool", p) then server.pick(p, s, cfg) end
 			else
 				if not InputDown("usetool", p) then s.needRelease = false end
-				if InputPressed("usetool", p) and not s.needRelease then s.charging = true end
+				-- no charge with nothing held (a volley is still flying)
+				if InputPressed("usetool", p) and not s.needRelease and #s.held > 0 then s.charging = true end
 				if s.charging then
 					s.charge = math.min(1, s.charge + dt / CHARGE_TIME)
 					if InputReleased("usetool", p) or not InputDown("usetool", p) then
@@ -188,6 +189,12 @@ function server.drop(p, s)
 end
 
 function server.throw(p, s, cfg)
+	if #s.held == 0 then
+		-- nothing to throw: keep the running volley
+		s.charge = 0
+		s.charging = false
+		return
+	end
 	local eye = GetPlayerEyeTransform(p)
 	local fwd = TransformToParentVec(eye, Vec(0, 0, -1))
 	local speed = (14 + 40 * s.charge) * cfg.power

@@ -45,6 +45,7 @@ end
 
 function server.init()
 	server.baseWalk = {}
+	server.walkFactor = {} -- player -> walking-speed factor while slowed
 	server.scale = {}      -- player -> requested time scale
 end
 
@@ -65,16 +66,27 @@ function server.tick(dt)
 		if IsPlayerValid(p) then s = math.min(s, v) else server.scale[p] = nil end
 	end
 	if s < 0.999 then SetTimeScale(s) end
+	-- SetPlayerWalkingSpeed also lasts one frame (the game's countdown.lua calls it every tick)
+	for p, f in pairs(server.walkFactor) do
+		if IsPlayerValid(p) then
+			SetPlayerWalkingSpeed(server.baseWalk[p] * f, p)
+		else
+			server.walkFactor[p] = nil
+			server.baseWalk[p] = nil
+		end
+	end
 end
 
 function server.walk(p, factor)
 	if not IsPlayerValid(p) then return end
 	if factor > 1.001 then
 		if not server.baseWalk[p] then server.baseWalk[p] = GetPlayerWalkingSpeed(p) end
+		server.walkFactor[p] = factor
 		SetPlayerWalkingSpeed(server.baseWalk[p] * factor, p)
 	elseif server.baseWalk[p] then
 		SetPlayerWalkingSpeed(server.baseWalk[p], p)
 		server.baseWalk[p] = nil
+		server.walkFactor[p] = nil
 	end
 end
 
@@ -92,6 +104,11 @@ function client.init()
 	client.sinceUse = 10
 	client.lastTime = GetTime()
 	client.orig = nil
+	client.set = nil
+	-- tint baseline, taken once (see captureOriginal)
+	local sat = GetPostProcessingProperty("saturation")
+	local r, g, b = GetPostProcessingProperty("colorbalance")
+	client.base = { sat = sat or 1, r = r or 1, g = g or 1, b = b or 1 }
 	client.sentWalk = 1
 	client.presetFlash = 0
 	client.hintT = 8
@@ -103,26 +120,40 @@ function client.init()
 	}
 end
 
-local function captureOriginal()
+local function readTint()
 	local sat = GetPostProcessingProperty("saturation")
 	local r, g, b = GetPostProcessingProperty("colorbalance")
-	client.orig = { sat = sat or 1, r = r or 1, g = g or 1, b = b or 1 }
+	return { sat = sat or 1, r = r or 1, g = g or 1, b = b or 1 }
+end
+
+-- replay) must not become our "original"
+local function captureOriginal()
+	client.orig = client.base
 end
 
 local function applyTint(k, strength)
 	local o = client.orig
 	if not o then return end
 	local t = k * strength
-	SetPostProcessingProperty("saturation", lerp(o.sat, o.sat * 0.45, t))
-	SetPostProcessingProperty("colorbalance", lerp(o.r, o.r * 0.82, t), lerp(o.g, o.g * 0.97, t), lerp(o.b, o.b * 1.25, t))
+	local set = { sat = lerp(o.sat, o.sat * 0.45, t), r = lerp(o.r, o.r * 0.82, t), g = lerp(o.g, o.g * 0.97, t), b = lerp(o.b, o.b * 1.25, t) }
+	SetPostProcessingProperty("saturation", set.sat)
+	SetPostProcessingProperty("colorbalance", set.r, set.g, set.b)
+	client.set = set
 end
 
+local function near(a, b) return a and b and math.abs(a - b) < 0.002 end
+
+-- restore only the values that are still ours (another mod may be tinting now)
 local function restoreTint()
 	local o = client.orig
 	if not o then return end
-	SetPostProcessingProperty("saturation", o.sat)
-	SetPostProcessingProperty("colorbalance", o.r, o.g, o.b)
+	local cur, set = readTint(), client.set
+	if not set or near(cur.sat, set.sat) then SetPostProcessingProperty("saturation", o.sat) end
+	if not set or (near(cur.r, set.r) and near(cur.g, set.g) and near(cur.b, set.b)) then
+		SetPostProcessingProperty("colorbalance", o.r, o.g, o.b)
+	end
 	client.orig = nil
+	client.set = nil
 end
 
 local function keyDown(key) return InputDown(key) end
@@ -157,10 +188,11 @@ function client.tick(dt)
 			client.presetFlash = 2
 			PlaySound(client.snd.click, nil, 0.6)
 		end
+		-- no activation during lockout (it would whoosh in and straight out)
 		if s.toggle then
-			if keyPressed(s.key) then client.setActive(not client.active) end
+			if keyPressed(s.key) and (client.active or not client.lockout) then client.setActive(not client.active) end
 		else
-			if keyPressed(s.key) or (keyDown(s.key) and not client.active and not client.lockout) then client.setActive(true) end
+			if not client.lockout and (keyPressed(s.key) or (keyDown(s.key) and not client.active)) then client.setActive(true) end
 			if keyReleased(s.key) or (client.active and not keyDown(s.key)) then client.setActive(false) end
 		end
 	else

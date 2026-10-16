@@ -100,6 +100,15 @@ local function rootBody(body)
 	return body
 end
 
+-- drop destroyed bodies from the frozen list and recount it
+local function pruneFrozen()
+	local n = 0
+	for b in pairs(shared.frozen) do
+		if IsHandleValid(b) then n = n + 1 else shared.frozen[b] = nil end
+	end
+	shared.frozenCount = n
+end
+
 local function movable(body)
 	if body == 0 or not IsHandleValid(body) then return false end
 	if body == GetWorldBody() then return false end
@@ -113,9 +122,18 @@ function server.tick(dt)
 		pl(p)
 	end
 	for p in PlayersRemoved() do
+		-- a resample job of a player who left: drop its half-built copy
+		local job = server.jobs[p]
+		if job and IsHandleValid(job.nb) then Delete(job.nb) end
+		server.jobs[p] = nil
 		server.held[p] = nil
 		server.undo[p] = nil
 		shared.pl[p] = nil
+	end
+	server.pruneT = (server.pruneT or 0) + 1
+	if server.pruneT >= 5 then
+		server.pruneT = 0
+		pruneFrozen()
 	end
 	for p in Players() do
 		if server.held[p] and (GetPlayerTool(p) ~= TOOL or not GetPlayerCanUseTool(p)) then
@@ -210,6 +228,7 @@ function server.freeze(p, body)
 		SetBodyActive(body, true)
 		event(p, "unfreeze", bt.pos)
 	else
+		if shared.frozenCount >= MAX_FROZEN then pruneFrozen() end
 		if shared.frozenCount >= MAX_FROZEN then
 			message(p, "toomanyfrozen")
 			return

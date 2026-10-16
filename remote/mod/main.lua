@@ -31,17 +31,52 @@ function readSettings()
 	}
 end
 
--- vehicle under the crosshair (works on any body of the vehicle, wheels included)
-local function aimedVehicle(p, range)
-	local eye = GetPlayerEyeTransform(p)
-	local fwd = TransformToParentVec(eye, Vec(0, 0, -1))
+-- vehicle hit by a ray (works on any body of the vehicle, wheels included); `skip` is passed through
+local function vehicleOnRay(p, origin, dir, range, skip)
 	QueryRejectPlayer(p)
+	if skip and skip ~= 0 then
+		QueryRejectVehicle(skip)
+		QueryRejectBody(GetVehicleBody(skip))
+	end
 	QueryRequire("physical")
-	local hit, dist, _, shape = QueryRaycast(eye.pos, fwd, range)
+	local hit, dist, _, shape = QueryRaycast(origin, dir, range)
 	if hit and shape ~= 0 then
 		return GetBodyVehicle(GetShapeBody(shape))
 	end
 	return 0
+end
+
+-- vehicle under the crosshair of the player's own eye
+local function aimedVehicle(p, range)
+	local eye = GetPlayerEyeTransform(p)
+	return vehicleOnRay(p, eye.pos, TransformToParentVec(eye, Vec(0, 0, -1)), range)
+end
+
+-- vehicle in sight closest to the view direction, within 10 degrees (the chase camera looks down
+-- at its own car, so a car further away sits above the middle of the picture)
+local function nearView(p, origin, dir, range, skip)
+	local best, bestA = 0, math.cos(math.rad(10))
+	local list = FindVehicles("", true)
+	for i = 1, #list do
+		local v = list[i]
+		if v ~= skip then
+			local to = VecSub(GetVehicleTransform(v).pos, origin)
+			local d = VecLength(to)
+			if d > 0.5 and d < range and VecDot(to, dir) / d > bestA then
+				if vehicleOnRay(p, origin, VecScale(to, 1 / d), d + 2, skip) == v then best, bestA = v, VecDot(to, dir) / d end
+			end
+		end
+	end
+	return best
+end
+
+-- hop target seen from the chase camera; if it finds nothing, the body's eye (the outline shows it)
+local function hopTarget(p, camPos, camDir, s, current)
+	local range = s.aimRange + s.camDist
+	local v = vehicleOnRay(p, camPos, camDir, range, current)
+	if v == 0 then v = nearView(p, camPos, camDir, range, current) end
+	if v == 0 then v = aimedVehicle(p, s.aimRange) end
+	return v
 end
 
 ---------------------------------------------------------------------------
@@ -104,7 +139,23 @@ end
 
 function server.grab(p)
 	local s = readSettings()
-	local v = aimedVehicle(p, s.aimRange)
+	server.connect(p, aimedVehicle(p, s.aimRange), s)
+end
+
+-- hop aimed from the client's chase camera: the server casts the ray itself
+function server.hop(p, ox, oy, oz, dx, dy, dz)
+	local c = server.c[p]
+	if not c then return end
+	local s = readSettings()
+	local origin = Vec(ox, oy, oz)
+	-- the chase camera is at most camDist (20 m max) from the car
+	if VecLength(VecSub(origin, GetVehicleTransform(c.vehicle).pos)) > 25 then return end
+	local dir = Vec(dx, dy, dz)
+	if VecLength(dir) < 1e-3 then return end
+	server.connect(p, hopTarget(p, origin, VecNormalize(dir), s, c.vehicle), s)
+end
+
+function server.connect(p, v, s)
 	if v == 0 then
 		if not server.c[p] then message(p, "novehicle") end
 		return
@@ -151,6 +202,13 @@ function server.drive(p, c, dt)
 		server.release(p)
 		return
 	end
+	if GetPlayerHealth(p) <= 0 then
+		-- a dead player lets go
+		server.release(p)
+		return
+	end
+	-- frozen also while the signal is lost
+	if c.s.freeze then DisablePlayerInput(p) end
 	local sp = st(p)
 	local dist = VecLength(VecSub(GetVehicleTransform(v).pos, GetPlayerTransform(p).pos))
 	local weak = clamp((dist - 0.75 * c.s.range) / (0.25 * c.s.range), 0, 1)
@@ -168,7 +226,6 @@ function server.drive(p, c, dt)
 	sp.lost = false
 	c.lostT = 0
 	DriveVehicle(v, c.drive, c.steer, c.brake)
-	if c.s.freeze then DisablePlayerInput(p) end
 end
 
 ---------------------------------------------------------------------------
@@ -222,8 +279,8 @@ function client.tick(dt)
 	client.msgT = math.max(0, client.msgT - dt)
 
 	local holding = GetPlayerTool() == TOOL and GetPlayerCanUseTool()
-	client.aim = holding and aimedVehicle(me, s.aimRange) or 0
 	local driving = sp and sp.vehicle ~= 0
+	client.camPos = nil
 	if driving and not client.wasDriving then
 		local vt = GetVehicleTransform(sp.vehicle)
 		local fwd = TransformToParentVec(vt, Vec(0, 0, -1))
@@ -231,6 +288,11 @@ function client.tick(dt)
 		client.pitch = -15
 	end
 	client.wasDriving = driving
+	if driving and client.sentVehicle ~= sp.vehicle then
+		-- a new car starts with no input on the server: send the held keys again
+		client.sent = { d = 0, s = 0, b = false }
+	end
+	client.sentVehicle = driving and sp.vehicle or 0
 
 	if driving then
 		local function axis(a, b) return (InputDown(a) and 1 or 0) - (InputDown(b) and 1 or 0) end
@@ -242,7 +304,6 @@ function client.tick(dt)
 			client.sent = { d = d, s = st, b = b }
 		end
 		if InputPressed("q") then ServerCall("server.release", me) end
-		if InputPressed("usetool") and GetPlayerTool() == TOOL then ServerCall("server.grab", me) end
 		if InputPressed("v") then client.follow = not client.follow end
 		if client.follow then
 			client.yaw = client.yaw - math.deg(InputValue("camerax")) * s.sens
@@ -257,9 +318,26 @@ function client.tick(dt)
 			local hit, dist = QueryRaycast(target, VecNormalize(back), s.camDist)
 			if hit then pos = VecAdd(target, VecScale(VecNormalize(back), math.max(0.8, dist - 0.3))) end
 			SetCameraTransform(Transform(pos, rot), 75)
+			client.camPos, client.camDir = pos, QuatRotateVec(rot, Vec(0, 0, -1))
+		end
+		if InputPressed("usetool") and GetPlayerTool() == TOOL then
+			if client.camPos then
+				local o, d = client.camPos, client.camDir
+				ServerCall("server.hop", me, o[1], o[2], o[3], d[1], d[2], d[3])
+			else
+				ServerCall("server.grab", me)
+			end
 		end
 	else
 		client.sent = { d = 0, s = 0, b = false }
+	end
+	-- outline target: what LMB would take or hop to
+	if not holding then
+		client.aim = 0
+	elseif client.camPos then
+		client.aim = hopTarget(me, client.camPos, client.camDir, s, sp.vehicle)
+	else
+		client.aim = aimedVehicle(me, s.aimRange)
 	end
 
 	for p in Players() do

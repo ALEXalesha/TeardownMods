@@ -8,7 +8,8 @@
 -- MakeHole radii: soft (glass, wood, plastic, plaster, foliage), medium
 -- (concrete, brick, weak metal), hard (hard metal, hard masonry). Medium is one
 -- class in the engine, so concrete/brick vs metal is told apart per point with
--- GetShapeMaterialAtPosition: masonry costs more budget (cuts slower).
+-- GetShapeMaterialAtPosition: masonry costs more budget (cuts slower). The material
+-- is read again at each depth step, so plaster over brick cuts the brick too.
 
 #include "script/include/player.lua"
 #include "script/toolanimation.lua"
@@ -44,6 +45,28 @@ end
 local function classOf(mat)
 	if SOFT[mat] then return 1 elseif METAL[mat] then return 2 elseif MASONRY[mat] then return 3 elseif HARD[mat] then return 4 end
 	return 0
+end
+
+-- MakeHole radii and budget cost for a material class under the current options (r0 = 0: do not cut)
+local function radiiFor(cls, s)
+	local r = s.radius
+	if cls == 1 then return r, 0, 0, 1
+	elseif cls == 2 then if s.metal then return r, r, 0, 1.5 end
+	elseif cls == 3 then if s.masonry then return r, r, 0, s.masonryCost end
+	elseif cls == 4 then if s.hard then return r, r, r * 0.9, 4 end
+	end
+	return 0, 0, 0, 1
+end
+
+-- material class at a point inside the cut (plaster over brick can be two shapes): 0 if nothing there
+local function classAt(q, reach)
+	QueryRequire("physical")
+	local hit, cp, normal, shape = QueryClosestPoint(q, reach)
+	if not hit then return nil end
+	local mat = GetShapeMaterialAtPosition(shape, q)
+	if mat == "" then mat = GetShapeMaterialAtPosition(shape, VecSub(cp, VecScale(normal, 0.03))) end
+	if mat == "" then return nil end
+	return classOf(mat)
 end
 
 ---------------------------------------------------------------------------
@@ -189,31 +212,27 @@ function server.runJob(job, dt)
 			else
 				local mat = GetShapeMaterialAtPosition(shape, VecSub(pt, VecScale(job.n, 0.03)))
 				local cls = classOf(mat)
-				local r = s.radius
-				local r0, r1, r2, cost = r, 0, 0, 1
-				if cls == 2 then
-					if s.metal then r1 = r else r0 = 0 end
-					cost = 1.5
-				elseif cls == 3 then
-					if s.masonry then r1 = r else r0 = 0 end
-					cost = s.masonryCost
-				elseif cls == 4 then
-					if s.hard then r1, r2 = r, r * 0.9 else r0 = 0 end
-					cost = 4
-				elseif cls == 0 then
-					r0 = 0
-				end
+				local r0, r1, r2, cost = radiiFor(cls, s)
 				job.surface = { pos = pt, r0 = r0, r1 = r1, r2 = r2, cost = cost, cls = cls }
 				job.k = 0
 				job.misses = 0
 			end
 		else
 			local sf = job.surface
+			local q = VecSub(sf.pos, VecScale(job.n, job.k * step))
+			-- read the material again at depth (plaster over brick); nothing found: keep the last radii
+			if job.k > 0 and sf.r0 > 0 and job.k < maxSteps then
+				local cls = classAt(q, step * 0.6)
+				if cls and cls ~= sf.cls then
+					sf.r0, sf.r1, sf.r2, sf.cost = radiiFor(cls, s)
+					sf.cls = cls
+				end
+			end
+			-- r0 = 0: a material the options do not cut, stop this point here
 			if sf.r0 <= 0 or job.k >= maxSteps then
 				job.surface = nil
 				job.pi = job.pi + 1
 			else
-				local q = VecSub(sf.pos, VecScale(job.n, job.k * step))
 				local removed = MakeHole(q, sf.r0, sf.r1, sf.r2, true)
 				job.holes = job.holes + 1
 				budget = budget - sf.cost

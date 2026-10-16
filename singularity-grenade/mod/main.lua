@@ -161,6 +161,8 @@ function server.tickPlayer(p, dt)
 end
 
 function server.throw(p, charge, underhand)
+	-- the limit again: a grenade may have appeared while charging
+	if server.aliveCount() >= MAX_ALIVE then return end
 	local s = readSettings()
 	server.settings = s
 	local eye = GetPlayerEyeTransform(p)
@@ -240,16 +242,16 @@ end
 function server.processRequests()
 	local count = GetInt(REQ .. "reqcount")
 	while server.reqDone < count do
+		local k = REQ .. "req." .. (server.reqDone + 1)
+		-- at the limit: keep the request queued until a grenade is gone
+		if HasKey(k) and server.aliveCount() >= MAX_ALIVE then break end
 		server.reqDone = server.reqDone + 1
-		local k = REQ .. "req." .. server.reqDone
 		if HasKey(k) then
 			local pos = Vec(GetFloat(k .. ".x"), GetFloat(k .. ".y"), GetFloat(k .. ".z"))
 			local vel = Vec(GetFloat(k .. ".vx"), GetFloat(k .. ".vy"), GetFloat(k .. ".vz"))
 			local owner = GetInt(k .. ".owner")
 			ClearKey(k)
-			if server.aliveCount() < MAX_ALIVE then
-				server.spawnGrenade(pos, vel, owner, readSettings())
-			end
+			server.spawnGrenade(pos, vel, owner, readSettings())
 		end
 	end
 end

@@ -2,8 +2,9 @@
 -- Failure model: the engine does not apply our SetBodyVelocity to the drone at all. The drone must
 -- notice within about half a second of held input, switch to kinematic flight (moved with
 -- SetBodyTransform each tick) and still fly: W for 2 s moves it >= 10 m along the view, Space
--- climbs, it does not fall without input. The on-screen debug line (on by default) shows the
--- mode and which keys the client and the server saw.
+-- climbs, it does not fall without input. The on-screen debug line (off by default since the
+-- independent review 16.10.2026, switched on here with savegame.mod.debugline) shows the mode and
+-- which keys the client and the server saw.
 local function V(x, y, z) return { x, y, z } end
 local function sh() return T.sharedOf() end
 local function me() return sh().d[1] end
@@ -19,7 +20,10 @@ T.frames(1)
 T.press("usetool"); T.frames(3)
 local body = me().body
 T.check(body ~= 0 and me().piloting, "drone launched")
-T.check(T.hasText("drone: mode velocity"), "debug line on by default, velocity mode first")
+T.check(not T.hasText("drone: mode"), "debug line hidden with nothing set")
+H.reg["savegame.mod.debugline"] = true
+T.frames(1)
+T.check(T.hasText("drone: mode velocity"), "debug line switched on, velocity mode first")
 
 local launchY = H.bodies[body].pos[2]
 T.frames(60)
@@ -43,6 +47,6 @@ T.frames(120)
 T.check(math.abs(H.bodies[body].pos[2] - y1) < 0.2, "hovers without input in kinematic mode")
 T.check(me().body == body, "no crash from the mode switch")
 -- the setting hides the debug line
-H.reg["savegame.mod.debug"] = false
+H.reg["savegame.mod.debugline"] = false
 T.frames(2)
 T.check(not T.hasText("drone: mode"), "debug line can be switched off")

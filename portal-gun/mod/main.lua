@@ -293,6 +293,8 @@ local function releaseLock(key, point)
 end
 
 function server.teleportPlayer(p)
+	-- a player in a vehicle stays in it (the car is not teleported)
+	if GetPlayerVehicle(p) ~= 0 then return end
 	local key = "p" .. p
 	releaseLock(key, VecAdd(GetPlayerTransform(p).pos, Vec(0, 0.9, 0)))
 	if server.cool[key] then return end

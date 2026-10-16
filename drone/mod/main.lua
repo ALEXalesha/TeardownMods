@@ -55,7 +55,7 @@ function readSettings()
 		sens = clamp(getF("sens", 1), 0.2, 3),
 		fov = clamp(getF("fov", 90), 60, 110),
 		freeze = getB("freeze", true),
-		debug = getB("debug", true),
+		debug = getB("debugline", false),   -- new key: old saves may hold debug = true
 	}
 end
 
@@ -115,6 +115,8 @@ function server.tick(dt)
 	end
 	for p in Players() do
 		local d = server.d[p]
+		-- another tool or death ends piloting (and the pin)
+		if d and d.piloting and (GetPlayerTool(p) ~= TOOL or GetPlayerHealth(p) <= 0) then server.setPiloting(p, false) end
 		if d and d.piloting and d.s.freeze and d.pin then
 			-- hold the pilot's body where it stood; DisablePlayerInput would also swallow the keys
 			SetPlayerTransform(d.pin, p)
@@ -171,7 +173,7 @@ function server.setPiloting(p, on)
 		return
 	end
 	d.piloting = on
-	if on then d.pin = GetPlayerTransform(p) else d.input = { f = 0, s = 0, u = 0 } end
+	if on then d.pin = GetPlayerTransform(p) else d.input = { f = 0, s = 0, u = 0 } d.pin = nil end
 	sd(p).piloting = on
 end
 
@@ -202,6 +204,7 @@ end
 function server.drop(p)
 	local d = server.d[p]
 	if not d or not d.piloting or d.bombs <= 0 or not IsHandleValid(d.body) then return end
+	if GetPlayerTool(p) ~= TOOL then return end
 	local bt = GetBodyTransform(d.body)
 	local pos = VecAdd(bt.pos, Vec(0, -0.35, 0))
 	local vel = (d.mode == "kinematic") and VecCopy(d.kvel) or GetBodyVelocity(d.body)
@@ -283,8 +286,7 @@ function server.fly(p, d, dt)
 
 	-- crash: the velocity is not what our controller left it at (something hit us)
 	if d.mode == "kinematic" then
-		server.flyKinematic(p, d, dt, st, s)
-		return
+		if server.flyKinematic(p, d, dt, st, s) ~= "velocity" then return end
 	end
 	if d.expect and d.age > 1.5 and VecLength(VecSub(vel, d.expect)) > s.crash then
 		st.lastCrash = string.format("dv %.1f", VecLength(VecSub(vel, d.expect)))
@@ -316,12 +318,20 @@ function server.fly(p, d, dt)
 
 	-- fallback that cannot fail: if the body does not follow our velocity (input held but no
 	-- progress, or sinking with no input) for half a second, fly it kinematically instead
-	if u ~= 0 or not d.refY then d.refY = bt.pos[2] end
-	if motors and d.age > 0.3 then
+	if u ~= 0 or lost or not d.refY then d.refY = bt.pos[2] end
+	-- not when lost (planned descent) or going down (the ground stops it)
+	if motors and d.age > 0.3 and not lost and desired[2] >= 0 then
 		local want = VecLength(desired)
 		local stuck
 		if want > 1 then
-			stuck = VecDot(vel, VecScale(desired, 1 / want)) < 0.3 * want
+			local dir = VecScale(desired, 1 / want)
+			stuck = VecDot(vel, dir) < 0.3 * want
+			if stuck then
+				-- something in the way (a wall) is not "stuck"
+				QueryRejectBody(d.body)
+				QueryRequire("physical")
+				if QueryRaycast(bt.pos, dir, 1.5) then stuck = false end
+			end
 		else
 			stuck = bt.pos[2] < d.refY - 0.4        -- losing height with nothing pressed
 		end
@@ -333,6 +343,8 @@ function server.fly(p, d, dt)
 			server.flyKinematic(p, d, dt, st, s)
 			return
 		end
+	else
+		d.stuckT = nil
 	end
 
 	if motors then
@@ -380,11 +392,33 @@ function server.goKinematic(d, st, bt)
 	st.mode = "kinematic"
 	d.kpos = VecCopy(bt.pos)
 	d.kvel = Vec(0, 0, 0)
+	d.kinN = (d.kinN or 0) + 1
+	d.kinT = 0
+	d.trial = nil
 	SetBodyDynamic(d.body, false)
+end
+
+-- a test step succeeded: the engine follows our velocity again
+function server.goVelocity(d, st, bt)
+	d.mode = nil
+	st.mode = "velocity"
+	d.expect = nil
+	d.stuckT = nil
+	d.refY = bt.pos[2]
 end
 
 -- kinematic flight: the body is static and moved every physics step; it stops at walls
 function server.flyKinematic(p, d, dt, st, s)
+	if d.trial then
+		-- last step was a velocity test: did the body keep the velocity we set?
+		local ok = VecLength(VecSub(GetBodyVelocity(d.body), d.trial)) < 0.3
+		d.trial = nil
+		if ok then
+			server.goVelocity(d, st, GetBodyTransform(d.body))
+			return "velocity"
+		end
+		SetBodyDynamic(d.body, false)
+	end
 	local f, side, u = 0, 0, 0
 	local dist = VecLength(VecSub(d.kpos, GetPlayerTransform(p).pos))
 	local lost = dist > s.range
@@ -415,6 +449,14 @@ function server.flyKinematic(p, d, dt, st, s)
 	end
 	d.kpos = VecAdd(d.kpos, step)
 	SetBodyTransform(d.body, Transform(d.kpos, QuatEuler(-f * 12, d.yaw, -side * 12)))
+	-- now and then try one physics step with a test velocity (less often after each relapse)
+	d.kinT = (d.kinT or 0) + dt
+	if motors and not lost and d.kinT >= math.min(60, 3 * 2 ^ ((d.kinN or 1) - 1)) then
+		d.kinT = 0
+		d.trial = VecAdd(d.kvel, Vec(0, 0.5, 0))
+		SetBodyDynamic(d.body, true)
+		SetBodyVelocity(d.body, VecSub(d.trial, VecScale(GetGravity(), dt)))
+	end
 	st.thrust = motors and clamp(0.35 + VecLength(d.kvel) / s.speed * 0.65, 0, 1) or 0
 	st.speed = VecLength(d.kvel)
 	st.yaw = d.yaw
@@ -478,6 +520,11 @@ local function mine()
 	return shared.d[GetLocalPlayer()]
 end
 
+-- this client flies the drone: holding the drone tool and alive
+local function pilotingNow(st)
+	return st and st.piloting and st.body ~= 0 and IsHandleValid(st.body) and GetPlayerTool() == TOOL and GetPlayerHealth() > 0
+end
+
 function client.tick(dt)
 	for p in PlayersAdded() do client.anim[p] = ToolAnimator() end
 	for p in PlayersRemoved() do client.anim[p] = nil end
@@ -515,7 +562,7 @@ function client.tick(dt)
 	end
 
 	local st = mine()
-	local piloting = st and st.piloting and st.body ~= 0 and IsHandleValid(st.body)
+	local piloting = pilotingNow(st)
 	if piloting and not client.wasPiloting then
 		client.camYaw = st.yaw
 		client.camPitch = -10
@@ -636,7 +683,7 @@ function client.render(dt)
 		if other.body ~= 0 and IsHandleValid(other.body) then client.drawRotors(other) end
 	end
 	local st = mine()
-	if not st or not st.piloting or st.body == 0 or not IsHandleValid(st.body) then return end
+	if not pilotingNow(st) then return end
 	if client.photo then return end
 	-- target marker: where a bomb released now would land
 	local bt = GetBodyTransform(st.body)
@@ -688,7 +735,7 @@ end
 
 function client.draw(dt)
 	local st = mine()
-	local piloting = st and st.piloting and st.body ~= 0 and IsHandleValid(st.body)
+	local piloting = pilotingNow(st)
 	if piloting then
 		if not client.photo then
 			local amount = st.weak
@@ -698,8 +745,8 @@ function client.draw(dt)
 				UiSoundLoop("MOD/snd/static.ogg", 0.6 * amount, 1.0)
 			end
 			client.drawHud(st)
+			client.drawDebug(st, true)
 		end
-		client.drawDebug(st, true)
 		return
 	end
 	if GetPlayerTool() ~= TOOL then return end
@@ -718,7 +765,7 @@ function client.draw(dt)
 	UiPop()
 end
 
--- one small line for in-game diagnosis (setting "Debug line", on by default in this version)
+-- one small line for in-game diagnosis (setting "Debug line", off by default, hidden in photo mode)
 function client.drawDebug(st, piloting)
 	if not readSettings().debug or not st then return end
 	local line = string.format("drone: mode %s | client %s | server %s | sent %s | speed %.1f m/s | camera %s | crashes %d%s",

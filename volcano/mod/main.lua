@@ -63,6 +63,7 @@ function server.init()
 	RegisterTool(TOOL, tr("Volcano", "Вулкан"), "MOD/prefab/tool.xml", 6)
 	server.v = nil
 	server.cones = {}          -- every cone body ever raised (for R)
+	server.coneGroups = {}     -- the layer bodies of each volcano, oldest first (MAX_CONES kept)
 	server.bombs = {}
 	shared.v = { phase = "idle", t = 0, T = 1, x = 0, y = 0, z = 0, top = 0, R = 0, k = 0, n = 0, layers = 0,
 		launchN = 0, impN = 0, ix = 0, iy = 0, iz = 0, blastN = 0, bombs = {}, msg = "", mn = 0 }
@@ -107,13 +108,17 @@ function server.place(p)
 		if not h2 then message("aim") return end
 		g = VecAdd(probe, Vec(0, -d2, 0))
 	end
-	if #server.cones >= MAX_CONES * LAYERS then server.clear() end
+	-- keep at most MAX_CONES cones: drop the oldest one, not all of them (review 16.10: the 5th volcano
+	-- deleted all four kept cones)
+	server.dropOldCones(MAX_CONES - 1)
+	local group = {}
+	server.coneGroups[#server.coneGroups + 1] = group
 	local v = {
 		phase = "grow", t = 0, s = s, scale = scale, vs = vs, R = R, ground = g, click = VecCopy(g), owner = p,
 		rot = QuatEuler(0, rnd(0, 360), 0), layers = {}, offset = nil, bombAcc = 0,
 		top = VecAdd(g, Vec(0, (CONE_H - CRATER_D) * vs - 0.3 * vs * 4, 0)),
 		rumbleT = s.duration * 0.25, eruptT = s.duration * 0.75, tracked = {}, cursor = 1, scanT = 0,
-		glowT = 0, glow = 0.2,
+		glowT = 0, glow = 0.2, group = group,
 	}
 	server.v = v
 	local sv = shared.v
@@ -217,6 +222,7 @@ function server.spawnLayer(v, k)
 	local layer = { body = body, shapes = shapeList(ents), t = LAYER_TIME, drop = 0, k = k }
 	v.layers[#v.layers + 1] = layer
 	server.cones[#server.cones + 1] = body
+	if v.group then v.group[#v.group + 1] = body end
 	shared.v.layers = #v.layers
 end
 
@@ -598,6 +604,25 @@ function server.blastWork(v, dt)
 	if v.front >= v.blastR and #v.queue == 0 then v.blastR = nil end
 end
 
+-- delete the oldest cones until at most `keep` cones with a live layer are left
+function server.dropOldCones(keep)
+	local live = {}
+	for _, g in ipairs(server.coneGroups) do
+		local any = false
+		for _, b in ipairs(g) do if IsHandleValid(b) then any = true end end
+		if any then live[#live + 1] = g end
+	end
+	while #live > keep do
+		for _, b in ipairs(table.remove(live, 1)) do
+			if IsHandleValid(b) then Delete(b) end
+		end
+	end
+	server.coneGroups = live
+	local still = {}
+	for _, b in ipairs(server.cones) do if IsHandleValid(b) then still[#still + 1] = b end end
+	server.cones = still
+end
+
 -- R: remove the cones (only while nothing erupts)
 function server.clear()
 	if server.v then return end
@@ -605,6 +630,7 @@ function server.clear()
 		if IsHandleValid(server.cones[i]) then Delete(server.cones[i]) end
 	end
 	server.cones = {}
+	server.coneGroups = {}
 	message("cleared")
 end
 

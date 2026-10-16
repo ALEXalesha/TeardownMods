@@ -516,6 +516,7 @@ function client.tick(dt)
 		client.lastN = m.n
 		client.roared = false
 		client.passed = false
+		client.lastBeep = -1          -- every moon gets its full countdown (review 16.10)
 		PlaySound(client.snd.chime, nil, 0.7)
 	end
 	if m.phase ~= client.phase then
@@ -531,7 +532,8 @@ function client.tick(dt)
 	if m.phase == "approach" then
 		local left = m.T - m.t
 		local I = smooth(0.35, 1.0, m.prog)
-		shake = I * 0.6
+		-- option "Tremors and wind" off: no approach shake, dust or wind either (review 16.10)
+		shake = readSettings().tremors and I * 0.6 or 0
 		if left < 6.2 and not client.roared then
 			client.roared = true
 			PlaySound(client.snd.roar, center, 1.0)
@@ -602,7 +604,7 @@ function client.update(dt)
 	local m = shared.m
 	if m.phase == "approach" then
 		local I = smooth(0.35, 1.0, m.prog)
-		if I > 0.05 then
+		if I > 0.05 and readSettings().tremors then
 			local cam = GetPlayerCameraTransform()
 			ParticleReset()
 			ParticleType("smoke")
@@ -660,7 +662,7 @@ function client.draw(dt)
 	if m.phase == "approach" then
 		local I = smooth(0.35, 1.0, m.prog)
 		UiSoundLoop("MOD/snd/rumble.ogg", 0.2 + 0.8 * I, 0.8 + 0.3 * I)
-		if I > 0.3 then UiSoundLoop("MOD/snd/wind.ogg", I * 0.8, 1.0) end
+		if I > 0.3 and s.tremors then UiSoundLoop("MOD/snd/wind.ogg", I * 0.8, 1.0) end
 		UiPush()
 			UiColor(0.6, 0.12, 0.05, 0.22 * I)
 			UiRect(UiWidth(), UiHeight())

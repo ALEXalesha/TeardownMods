@@ -3,7 +3,9 @@
 -- current (drag, buoyancy by density, damped lift), tearing - must stay byte for byte as in 775d30a,
 -- the build Alexey approved. A deliberate physics change updates the numbers below together with
 -- lift_law.lua and destruction_law.lua and a new in-game test.
-local LOCK_LEN, LOCK_HASH = 9524, 1569880566   -- 775d30a
+-- 16.10.2026: re-locked after the review fix in server.tick (RMB during the warning stops instead of
+-- starting the backwash); waterAt, the current and tearing are unchanged.
+local LOCK_LEN, LOCK_HASH = 9684, 1768213176   -- 775d30a + early call-off
 
 local src = H.readFile(H.modDir .. "/main.lua"):gsub("\r\n", "\n")
 local a = src:find("function waterAt(", 1, true)

@@ -125,7 +125,7 @@ function server.tick(dt)
 		end
 		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
 			if InputPressed("usetool", p) then
-				if server.q and not server.q.aftershock then
+				if server.q then          -- also during an aftershock: "LMB again stops it" (review 16.10)
 					server.stop()
 				else
 					server.start(p, st.preset, 1.0, nil, false)
@@ -551,7 +551,7 @@ function client.draw(dt)
 		UiColor(1, 1, 1, 0.85)
 		if q.active then
 			if q.after == 1 then
-				UiText(tr("Aftershock", "Афтершок") .. string.format(" %.0f / %.0f s", q.t, q.D))
+				UiText(tr("Aftershock", "Афтершок") .. string.format(" %.0f / %.0f s", q.t, q.D) .. tr("    LMB: stop", "    ЛКМ: остановить"))
 			else
 				UiText(tr("LMB: stop the quake", "ЛКМ: остановить") .. string.format("   %.0f / %.0f s", q.t, q.D))
 			end

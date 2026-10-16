@@ -112,10 +112,13 @@ local props = H.entities[sea].props
 T.check(props.wave == 0.3 and props.ripple == 0.4 and props.motion == 0.2 and props.foam == 0.1 and props.depth == 5, "the level's water is exactly as it was")
 T.frameHooks[#T.frameHooks] = nil
 
--- RMB calls it off
+-- RMB calls it off; during the warning no water came yet, so it just stops (review 16.10)
 T.press("usetool"); T.frames(30)
 T.press("grab"); T.frames(2)
-T.check(sh().ts.phase == "recede", "RMB calls the wave off")
+T.check(sh().ts.phase == "idle", "RMB during the warning calls the wave off")
+T.press("usetool"); T.runUntil(function() return sh().ts.phase ~= "warning" end, 2000)
+T.press("grab"); T.frames(2)
+T.check(sh().ts.phase == "recede", "RMB with the wave on its way: the water runs back")
 T.runUntil(function() return sh().ts.phase == "idle" end, 1200)
 
 -- no siren, no damage

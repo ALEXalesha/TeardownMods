@@ -1,5 +1,5 @@
 [h1]Trampoline Floor[/h1]
-Place bounce pads, or make the whole ground bouncy. Players, objects and vehicles bounce back at least as high as they fell, a little higher each time, and jumping on contact sends you even higher.
+Place bounce pads, or make the whole ground bouncy. Players, objects and vehicles bounce back at least as high as they fell (with the default bounciness), a little higher each time, and jumping on contact sends you even higher.
 
 [h2]Features[/h2]
 [list]

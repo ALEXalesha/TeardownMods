@@ -8,7 +8,7 @@ A storm caller. Spawn a tornado at the aim point: it forms in place, then wander
 [*]Pulls in, spins, lifts and flings; heavy things resist
 [*]Vehicles and the player can be lifted; walls shield you
 [*]Tears glass, wood and plaster; concrete and metal at higher strength
-[*]Wind roar that grows as it comes, thunder, camera shake
+[*]Wind roar that grows as it comes, camera shake
 [/list]
 [h2]Controls[/h2]
 [list]

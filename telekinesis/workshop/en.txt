@@ -5,7 +5,7 @@ A telekinesis gauntlet. Lift the loose objects around your aim point into a spin
 [list]
 [*]Up to 8 objects at once, each up to 200 kg
 [*]They hover on a spinning ring that tightens while you charge
-[*]Volley throw at 14-54 m/s depending on the charge
+[*]Volley throw at 14-54 m/s depending on the charge (light objects; heavy ones fly slower)
 [*]Energy meter (can be switched off)
 [*]Violet outlines, wisps, sparkles, a rising hum
 [/list]
@@ -29,6 +29,7 @@ A telekinesis gauntlet. Lift the loose objects around your aim point into a spin
 [list]
 [*]Vehicles and players are never picked up
 [*]Putting the tool away drops everything
+[*]The energy time is for about 200 kg held in total: a lighter load lasts longer, a heavier one runs out sooner
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

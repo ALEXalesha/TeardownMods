@@ -9,6 +9,8 @@ import re
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workshop_data import MODS  # noqa: E402
 
 
 def read_info(path):
@@ -27,9 +29,14 @@ def main() -> int:
         info = os.path.join(ROOT, name, "mod", "info.txt")
         if os.path.isfile(info):
             kv = read_info(info)
-            desc = kv.get("description", "")
-            en, _, ru = desc.partition(" / ")
-            mods.append((name, kv.get("en_name", kv.get("name", name)), kv.get("ru_name", name), en.strip(), (ru or en).strip()))
+            # description is English only (it is the Workshop text); the Russian column comes from
+            # workshop_data intro_ru. Review 16.10: the old split on " / " cut rows at the first
+            # "B - open / close" and put English halves into the Russian table.
+            en = kv.get("description", "").strip()
+            d = MODS.get(name) or {}
+            ru = d.get("intro_ru") or kv.get("ru_description") or en
+            cell = lambda t: t.replace("|", "\\|")
+            mods.append((name, kv.get("en_name", kv.get("name", name)), kv.get("ru_name", name), cell(en), cell(ru.strip())))
     tables = {
         "README.md": ("| Folder | Mod | What it is |\n|---|---|---|\n", lambda m: f"| [{m[0]}]({m[0]}) | {m[1]} | {m[3]} |"),
         "README.ru.md": ("| Папка | Мод | Что это |\n|---|---|---|\n", lambda m: f"| [{m[0]}]({m[0]}) | {m[2]} | {m[4]} |"),
@@ -41,7 +48,7 @@ def main() -> int:
         if "<!-- mods -->" not in s:
             raise SystemExit(f"{fname}: markers missing")
         s = re.sub(r"<!-- mods -->.*?<!-- /mods -->", lambda _: block, s, flags=re.S)
-        open(p, "w", encoding="utf-8").write(s)
+        open(p, "w", encoding="utf-8", newline="\n").write(s)
     print(f"index: {len(mods)} mods")
     return 0
 

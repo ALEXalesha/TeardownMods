@@ -35,7 +35,7 @@ A deployable quadcopter flown from its own camera while your body stays behind. 
 [*]Mouse sensitivity: [i]x1[/i]
 [*]Camera FOV 60-110°: [i]90[/i]
 [*]Hold the pilot's body in place: [i]yes[/i]
-[*]Debug line (for testing): [i]on[/i]
+[*]Debug line (for testing): [i]off[/i]
 [/list]
 [h2]Known limits[/h2]
 [list]

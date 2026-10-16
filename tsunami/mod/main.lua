@@ -108,7 +108,10 @@ function server.tick(dt)
 	for p in Players() do
 		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
 			if InputPressed("usetool", p) and not server.w then server.start(p) end
-			if InputPressed("grab", p) and server.w and server.w.phase ~= "recede" then server.recede(server.w) end
+			if InputPressed("grab", p) and server.w and server.w.phase ~= "recede" then
+				-- before any water came there is nothing to run back: just stop (review 16.10)
+				if server.w.phase == "warning" then server.finish(server.w) else server.recede(server.w) end
+			end
 		end
 	end
 end

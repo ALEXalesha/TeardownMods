@@ -225,9 +225,19 @@ def check_files(files: dict[str, bytes], tokens: list[bytes] | None = None) -> l
         if abs(im.width / im.height - 16 / 9) > 0.03:
             problems.append(f"{thumb_name} is {im.width}x{im.height}: the in-game preview should be 16:9")
     idt = files.get("id.txt")
-    if idt is not None and not idt.strip().isdigit():
-        problems.append("id.txt must hold the numeric Steam item id")
+    if idt is not None and not workshop_id(idt):
+        problems.append("id.txt must start with the numeric Steam item id")
     return problems
+
+
+def workshop_id(data: bytes) -> str | None:
+    """The Steam item id from id.txt. The game writes the id on the first line and three
+    comment lines after it ("# The first line of this file contains ..."), so only the
+    first line is the id (review 16.10.2026: the old check wanted digits only and failed
+    every published mod)."""
+    lines = data.decode("utf-8", "replace").strip().splitlines()
+    first = lines[0].strip() if lines else ""
+    return first if first.isdigit() else None
 
 
 def check_junction(folder: str, mod_dir: str) -> str | None:
@@ -253,6 +263,13 @@ def self_test() -> list[str]:
     got = check_files(clean, tokens=[])
     if got:
         fails.append(f"clean folder reported problems: {got}")
+    # id.txt exactly as the game writes it on the first publish
+    game_id = (b"3817996687\n\n# The first line of this file contains the corresponding Steam Workshop item ID\n"
+               b"# It is used when submitting an update and must match one of your items\n"
+               b"# You can find the ID of an item in the URL when viewing it in Steam Workshop\n")
+    got = check_files(dict(clean, **{"id.txt": game_id}), tokens=[])
+    if got:
+        fails.append(f"id.txt written by the game reported as a problem: {got}")
     drive = "C:" + "\\" + "Drive" + "\\" + "Someone" + "\\x"
     planted = {
         "path in lua": {"main.lua": ("-- " + drive).encode()},
@@ -264,6 +281,7 @@ def self_test() -> list[str]:
         "wide steam preview": {"preview.jpg": jpg(1024, 576)},
         "missing preview": {"preview.jpg": None},
         "bad tag": {"info.txt": info.replace(b"tags = Tool", b"tags = Weapons")},
+        "id.txt without an id": {"id.txt": b"# The first line of this file contains the id\n"},
     }
     for name, change in planted.items():
         f = dict(clean)

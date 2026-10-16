@@ -54,8 +54,10 @@ local TOL = 0.05                 -- a part more than 5 cm from its designed plac
 local MAX_SPAWNS = 6             -- measuring and real spawns per placement
 local AMMO = { "boulder", "barrel", "car", "crates" }
 local AMMO_K = { boulder = 1.0, barrel = 0.7, car = 0.85, crates = 0.5, other = 0.7 }
--- collision layers: the arm's shapes do not collide with the frame's (the hub sits around the axle)
-local LAYER_FRAME, LAYER_ARM = 4, 2
+-- collision layers: the arm's shapes do not collide with the frame's (the hub sits around the axle);
+-- a load that has just been released does not collide with either while it leaves the bucket
+local LAYER_FRAME, LAYER_ARM, LAYER_LOAD = 4, 2, 8
+local GHOST_TIME = 1.0           -- seconds a released load passes through its catapult
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function rnd(a, b) return a + (b - a) * math.random() end
@@ -213,6 +215,8 @@ function server.init()
 	server.impacts = {}
 	server.nextId = 1
 	server.fix = nil              -- measured per-part corrections (catapult space), kept for the next catapults
+	server.loadN = 0              -- every load (one Spawn: a boulder, a car with its wheels, 6 crates) has its own number
+	server.ghosts = {}            -- released loads passing through their catapult: { shapes = { {sh, layer, mask} }, t }
 	shared.cp = { reason = "", list = {}, fireN = 0, fx = 0, fy = 0, fz = 0, relN = 0, impN = 0, ix = 0, iy = 0, iz = 0, isp = 0, msg = "", mn = 0, flying = {} }
 end
 
@@ -284,6 +288,8 @@ function server.sync()
 		local c = server.cats[i]
 		list[i] = { id = c.id, frame = c.frame, arm = c.arm, axle = c.axle, bucket = c.bucket, power = c.power, angle = c.angle,
 			ammo = c.ammo, state = c.state, armLen = c.armLen or L1, psiRest = c.psiRest or -REST, broken = c.broken, dbg = c.dbg or "" }
+		local rp = (not c.broken) and server.releasePoint(c) or nil
+		if rp then list[i].rx, list[i].ry, list[i].rz = rp[1], rp[2], rp[3] end
 	end
 	shared.cp.list = list
 	local fl = {}
@@ -502,20 +508,38 @@ function server.contents(c)
 	return out, players
 end
 
-local function trimAmmo(extra)
-	-- keep the number of mod-spawned ammo bodies bounded: drop the oldest that are not in a swing
+-- keep the number of mod-spawned ammo bodies bounded, deleting whole loads (all bodies of one Spawn),
+-- oldest first. In-game 17.10 "the car vanishes in mid-air": the car is 5 bodies (body + 4 wheels), and
+-- the cars were counted by BODIES, so the automatic reload a second after the shot found "5 cars" and
+-- deleted bodies of the car still flying.
+local function deleteLoad(id)
+	local keep = {}
+	for _, a in ipairs(server.ammo) do
+		if a.load == id then
+			if IsHandleValid(a.body) then Delete(a.body) end
+		else
+			keep[#keep + 1] = a
+		end
+	end
+	server.ammo = keep
+end
+local function trimAmmo(extra, kind)
 	local alive = {}
 	for i = 1, #server.ammo do if IsHandleValid(server.ammo[i].body) then alive[#alive + 1] = server.ammo[i] end end
 	server.ammo = alive
-	while #server.ammo + extra > MAX_AMMO and #server.ammo > 0 do
-		local a = table.remove(server.ammo, 1)
-		Delete(a.body)
-	end
-	local cars = 0
-	for i = #server.ammo, 1, -1 do
-		if server.ammo[i].kind == "car" then
-			cars = cars + 1
-			if cars > MAX_CARS - 1 and extra > 0 then Delete(server.ammo[i].body) table.remove(server.ammo, i) end
+	while #server.ammo + extra > MAX_AMMO and #server.ammo > 0 do deleteLoad(server.ammo[1].load) end
+	if kind == "car" then
+		while true do
+			local seen, n, oldest = {}, 0, nil
+			for _, a in ipairs(server.ammo) do
+				if a.kind == "car" and not seen[a.load] then
+					seen[a.load] = true
+					n = n + 1
+					oldest = oldest or a.load
+				end
+			end
+			if n < MAX_CARS then break end
+			deleteLoad(oldest)
 		end
 	end
 end
@@ -542,15 +566,15 @@ function server.load(c, kind)
 	local ents
 	local groups = {}
 	if name == "boulder" then
-		trimAmmo(1)
+		trimAmmo(1, name)
 		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
 		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "barrel" then
-		trimAmmo(1)
+		trimAmmo(1, name)
 		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
 		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "crates" then
-		trimAmmo(6)
+		trimAmmo(6, name)
 		local xml = ""
 		for i = 1, #CRATE_SLOTS do
 			local s = CRATE_SLOTS[i]
@@ -559,7 +583,7 @@ function server.load(c, kind)
 		end
 		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
 	elseif name == "car" then
-		trimAmmo(1)
+		trimAmmo(5, name)
 		-- the game's own small car if its prefab can be spawned, else the mod's car body; it is wider than
 		-- the bucket, so it lies on the rim
 		local t = Transform(VecAdd(floor, Vec(0, 2.0, 0)), QuatRotateQuat(rot, QuatEuler(0, 90, 0)))
@@ -572,10 +596,11 @@ function server.load(c, kind)
 		groups[1] = { slot = Vec(0, 0, 0), rim = true, all = true }
 	end
 	local bodies = {}
+	server.loadN = server.loadN + 1
 	for i = 1, #(ents or {}) do
 		if GetEntityType(ents[i]) == "body" then
 			bodies[#bodies + 1] = ents[i]
-			server.ammo[#server.ammo + 1] = { body = ents[i], kind = name, cat = c.id }
+			server.ammo[#server.ammo + 1] = { body = ents[i], kind = name, cat = c.id, load = server.loadN }
 		end
 	end
 	-- one body per group (crates: in spawn order), or all bodies in one group (the car and its wheels)
@@ -666,6 +691,9 @@ function server.fire(c)
 		local kind = "other"
 		for j = 1, #server.ammo do if server.ammo[j].body == b then kind = server.ammo[j].kind end end
 		c.held[#c.held + 1] = { body = b, off = TransformToLocalPoint(armT, GetBodyTransform(b).pos), kind = kind }
+		-- a load lying still is out of the simulation, and neither a constraint nor SetBodyVelocity wakes it:
+		-- in-game 17.10 the arm swung through the boulder, the barrel and the crates
+		SetBodyActive(b, true)
 	end
 	c.heldPlayers = {}
 	for i = 1, #players do
@@ -674,7 +702,6 @@ function server.fire(c)
 	end
 	c.state = "swing"
 	c.t = 0
-	c.release = 90 - c.angle
 	c.shotFrom = c.psiRest + c.theta
 	c.shotTo = c.shotFrom
 	shared.cp.fireN = shared.cp.fireN + 1
@@ -683,28 +710,65 @@ function server.fire(c)
 	server.sync()
 end
 
-function server.releaseLoad(c)
+-- the arm angle (degrees turned up from rest) at which the load is released: the bucket then moves at the
+-- set launch angle
+function server.releaseTheta(c)
+	return clamp((90 - c.angle) - (c.psiRest or -REST), 0, 170)
+end
+-- where the load starts its flight: the loaded body's place on the arm at the release angle (the arc
+-- preview starts here)
+function server.releasePoint(c)
+	if not (c.arm and IsHandleValid(c.arm) and c.pivotLocal) then return nil end
+	local pose = server.armPose(c, server.releaseTheta(c))
+	local g = c.groups and c.groups[1]
+	if g and g.placed and g.offs and g.offs[1] then return TransformToParentPoint(pose, g.offs[1]) end
+	if not (c.bucket and IsHandleValid(c.bucket)) then return nil end
+	local now = server.armPose(c, c.theta or 0)
+	return TransformToParentPoint(pose, TransformToLocalPoint(now, server.bucketCentre(c)))
+end
+
+-- the release: the arm stops at exactly the release angle, every held body is put at its place in the
+-- bucket at that angle and given exactly the planned velocity, and it passes through its catapult while
+-- it leaves. In-game 17.10 "the shots do not fly along the trajectory": in the release update the swing
+-- had already put the load on a position constraint towards the moving arm and given the arm its full
+-- swing speed; the game solves constraints in the physics step after the script, so the load left with
+-- the bucket's speed (about 50 m/s at any power) instead of the planned one.
+function server.releaseLoad(c, theta)
 	local fwd = VecScale(server.back(c), -1)
 	local th = math.rad(c.angle)
 	local speed = launchSpeed(c.power)
 	local v = VecAdd(VecScale(fwd, speed * math.cos(th)), Vec(0, speed * math.sin(th), 0))
+	local pose = server.armPose(c, theta or c.theta)
+	local spin = Vec(rnd(-1.5, 1.5), rnd(-1.5, 1.5), rnd(-1.5, 1.5))
+	local ghost = { shapes = {}, t = 0 }
 	for i = 1, #c.held do
 		local h = c.held[i]
 		if IsHandleValid(h.body) then
-			SetBodyVelocity(h.body, VecAdd(v, Vec(rnd(-0.3, 0.3), rnd(-0.3, 0.3), rnd(-0.3, 0.3))))
-			SetBodyAngularVelocity(h.body, Vec(rnd(-2, 2), rnd(-2, 2), rnd(-2, 2)))
+			local t = GetBodyTransform(h.body)
+			SetBodyTransform(h.body, Transform(TransformToParentPoint(pose, h.off), t.rot))
+			SetBodyActive(h.body, true)
+			SetBodyVelocity(h.body, v)
+			-- one spin for the whole load; none for the car (its wheels spinning apart from its body would
+			-- tear them off)
+			SetBodyAngularVelocity(h.body, (h.kind == "car") and Vec(0, 0, 0) or spin)
+			for _, sh in ipairs(GetBodyShapes(h.body)) do
+				local layer, mask = GetShapeCollisionFilter(sh)
+				ghost.shapes[#ghost.shapes + 1] = { sh = sh, layer = layer, mask = mask }
+				SetShapeCollisionFilter(sh, LAYER_LOAD, 255 - LAYER_ARM - LAYER_FRAME)
+			end
 			if #server.flying < MAX_FLYING then
 				server.flying[#server.flying + 1] = { body = h.body, kind = h.kind, t = 0, prev = VecCopy(v), n = 0, from = VecCopy(server.bucketFloor(c)), cat = c.id }
 			end
 		end
 	end
+	if #ghost.shapes > 0 then server.ghosts[#server.ghosts + 1] = ghost end
 	for i = 1, #c.heldPlayers do
 		local hp = c.heldPlayers[i]
 		SetPlayerVelocity(v, hp.p)
 		server.protect[hp.p] = { t = 0 }
 	end
-	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = c.psiRest + c.theta, held = #c.held + #c.heldPlayers }
-	c.lastShot = string.format("last shot: angle %+.0f -> %+.0f, released %d at %.0f m/s", c.shotFrom or 0, c.psiRest + c.theta, #c.held + #c.heldPlayers, speed)
+	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = c.psiRest + (theta or c.theta), held = #c.held + #c.heldPlayers }
+	c.lastShot = string.format("last shot: angle %+.0f -> %+.0f, released %d at %.0f m/s", c.shotFrom or 0, c.psiRest + (theta or c.theta), #c.held + #c.heldPlayers, speed)
 	c.held = {}
 	c.heldPlayers = {}
 	c.loaded = nil
@@ -753,25 +817,38 @@ function server.update(dt)
 			if c.dbgT <= 0 then c.dbgT = 0.5 server.debugInfo(c) server.sync() end
 		elseif c.state == "swing" then
 			c.t = c.t + dt
-			c.theta = c.theta + SWING * dt
-			server.holdArm(c, SWING)
-			local psi = c.psiRest + c.theta
-			c.shotTo = psi
-			local armT = server.armPose(c, c.theta)
-			for j = 1, #c.held do
-				local h = c.held[j]
-				if IsHandleValid(h.body) then
-					ConstrainPosition(h.body, 0, GetBodyTransform(h.body).pos, TransformToParentPoint(armT, h.off), 80)
+			local relTheta = server.releaseTheta(c)
+			if c.theta + SWING * dt >= relTheta or c.theta + SWING * dt >= 170 then
+				-- the release update: the load leaves from its place at exactly the release angle and nothing
+				-- pulls it towards the arm any more (see server.releaseLoad); the arm stops where the last
+				-- physics step really took it (measured: a step past the angle it was set to), so it does
+				-- not jerk back
+				c.theta = clamp(server.psi(c) - c.psiRest, c.theta, 170)
+				c.shotTo = c.psiRest + relTheta
+				server.holdArm(c, 0)
+				server.releaseLoad(c, relTheta)
+				server.debugInfo(c)
+				server.sync()
+			else
+				c.theta = c.theta + SWING * dt
+				server.holdArm(c, SWING)
+				c.shotTo = c.psiRest + c.theta
+				local armT = server.armPose(c, c.theta)
+				for j = 1, #c.held do
+					local h = c.held[j]
+					if IsHandleValid(h.body) then
+						SetBodyActive(h.body, true)
+						ConstrainPosition(h.body, 0, GetBodyTransform(h.body).pos, TransformToParentPoint(armT, h.off), 80)
+					end
 				end
+				for j = 1, #c.heldPlayers do
+					local hp = c.heldPlayers[j]
+					SetPlayerTransform(Transform(TransformToParentPoint(armT, hp.off), GetPlayerTransform(hp.p).rot), hp.p)
+					SetPlayerVelocity(Vec(0, 0, 0), hp.p)
+				end
+				c.dbgT = (c.dbgT or 0) - dt
+				if c.dbgT <= 0 then c.dbgT = 0.1 server.debugInfo(c) server.sync() end
 			end
-			for j = 1, #c.heldPlayers do
-				local hp = c.heldPlayers[j]
-				SetPlayerTransform(Transform(TransformToParentPoint(armT, hp.off), GetPlayerTransform(hp.p).rot), hp.p)
-				SetPlayerVelocity(Vec(0, 0, 0), hp.p)
-			end
-			c.dbgT = (c.dbgT or 0) - dt
-			if c.dbgT <= 0 then c.dbgT = 0.1 server.debugInfo(c) server.sync() end
-			if psi >= c.release or c.theta >= 170 then server.releaseLoad(c) server.debugInfo(c) server.sync() end
 		elseif c.state == "reset" then
 			c.t = c.t + dt
 			local w = 0
@@ -788,6 +865,15 @@ function server.update(dt)
 				if s.reload then server.load(c, c.ammo) end
 				server.sync()
 			end
+		end
+	end
+	-- released loads collide with their catapult again once they are away from it
+	for i = #server.ghosts, 1, -1 do
+		local g = server.ghosts[i]
+		g.t = g.t + dt
+		if g.t >= GHOST_TIME then
+			for _, e in ipairs(g.shapes) do if IsHandleValid(e.sh) then SetShapeCollisionFilter(e.sh, e.layer, e.mask) end end
+			table.remove(server.ghosts, i)
 		end
 	end
 	server.updateFlying(dt, s)
@@ -1060,6 +1146,8 @@ function client.predict(c)
 	local back = QuatRotateVec(GetBodyTransform(c.frame).rot, Vec(0, 0, 1))
 	local psi = math.rad(90 - c.angle)
 	local R = VecAdd(P, VecAdd(VecScale(back, c.armLen * math.cos(psi)), Vec(0, c.armLen * math.sin(psi), 0)))
+	-- the server's release point: the loaded body's own place on the arm at the release angle
+	if c.rx then R = Vec(c.rx, c.ry, c.rz) end
 	local th = math.rad(c.angle)
 	local speed = launchSpeed(c.power)
 	local v = VecAdd(VecScale(back, -speed * math.cos(th)), Vec(0, speed * math.sin(th), 0))

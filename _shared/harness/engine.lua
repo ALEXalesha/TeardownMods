@@ -621,7 +621,7 @@ A.SetBodyAngularVelocity = function(h, v) local b = B(h, "SetBodyAngularVelocity
 A.GetBodyAngularVelocity = function(h) local b = B(h, "GetBodyAngularVelocity"); if not b then return V() end return A.VecCopy(b.angvel) end
 A.SetBodyGravityScale = function(h, s) local b = B(h); if b then b.gravityScale = s end end
 A.IsBodyActive = function(h) local b = B(h, "IsBodyActive"); return b ~= nil and b.active end
-A.SetBodyActive = function(h, a) local b = B(h, "SetBodyActive"); if b then b.active = a end end
+A.SetBodyActive = function(h, a) local b = B(h, "SetBodyActive"); if b then b.active = a; if a then b.restT = 0 end end end
 A.ApplyBodyImpulse = function(h, pos, imp)
 	local b = B(h, "ApplyBodyImpulse")
 	if not b then return end
@@ -934,6 +934,10 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 	-- every <body> creates a body; every <vox>/<voxbox> a shape. H.spawnModel.maxBodies: a partial
 	-- spawn (only the first n bodies come out), to exercise what a mod does when parts are missing
 	for tag, attrs in content:gmatch("<(%w+)([^>]*)>") do
+		-- a vehicle's <wheel> is a body of its own in the game: the catapult's small car
+		-- (generic_small_blue.xml: 1 <body> + 4 <wheel>) came out as "5 bodies" in Alexey's debug line 17.10
+		local isWheel = (tag == "wheel")
+		if isWheel then tag = "body" end
 		if tag == "body" then
 			nBodies = nBodies + 1
 			skipping = H.spawnModel and H.spawnModel.maxBodies and nBodies > H.spawnModel.maxBodies or false
@@ -941,7 +945,7 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 		if skipping then
 			-- this body and what it holds are not created
 		elseif tag == "body" then
-			local dyn = parseAttr(attrs, "dynamic")
+			local dyn = isWheel and "true" or parseAttr(attrs, "dynamic")
 			local bt = A.TransformToParentTransform(transform, H.attrTransform(attrs))
 			cur = H.addBody { pos = bt.pos, rot = bt.rot, dynamic = (dyn == "true"), shapes = 0, mass = 2, half = V(0.1, 0.1, 0.1) }
 			H.bodies[cur].spawnFrame = H.frame
@@ -1702,6 +1706,34 @@ end
 
 function H.physicsStep(dt)
 	H.hingeStep(dt)
+	-- H.sleepModel.restSleep (seconds): "for performance reasons, bodies that don't move are taken out of
+	-- the simulation" (IsBodyActive in script_defs) - a dynamic body at rest that long falls asleep
+	if H.sleepModel and H.sleepModel.restSleep then
+		for h, b in pairs(H.bodies) do
+			if b.valid and b.dynamic and b.active ~= false and h ~= H.worldBody and not b.isTool then
+				if A.VecLength(b.vel) < 0.05 and A.VecLength(b.angvel) < 0.05 then
+					b.restT = (b.restT or 0) + dt
+					if b.restT >= H.sleepModel.restSleep then b.active = false b.vel = V() b.angvel = V() end
+				else
+					b.restT = 0
+				end
+			end
+		end
+	end
+	-- constraints made in this update (H.constraintModel == "step"), solved now, after the scripts
+	for _, b in pairs(H.bodies) do
+		local pc = b.pendingConstraint
+		if pc then
+			b.pendingConstraint = nil
+			if b.valid and b.dynamic and not (H.sleepModel and H.sleepModel.constraintWakes == false and b.active == false) then
+				local v = A.VecScale(pc.d, 60)
+				local l = A.VecLength(v)
+				if pc.maxVel and l > pc.maxVel then v = A.VecScale(v, pc.maxVel / l) end
+				b.vel = A.VecSub(v, A.VecScale(H.gravity, dt * b.gravityScale))
+				b.active = true
+			end
+		end
+	end
 	for h, b in pairs(H.bodies) do
 		-- sleeping bodies (active == false) are not simulated until something wakes them
 		if b.valid and b.dynamic and h ~= H.worldBody and not b.isTool and b.active ~= false and not b.hinged then
@@ -1848,7 +1880,17 @@ A.ConstrainPosition = function(bA, bB, pA, pB, maxVel, maxImp)
 	local b = H.bodies[bA]
 	if not b or not b.valid then return end
 	if not b.dynamic then return end
+	-- H.sleepModel.constraintWakes == false: a body taken out of the simulation (asleep) is not moved by a
+	-- constraint to the world. In-game 17.10 the catapult's boulder, barrel and crates, resting in the
+	-- bucket, stayed where they were while the arm swung through them (the car on the rim flew)
+	if H.sleepModel and H.sleepModel.constraintWakes == false and b.active == false then return end
 	local d = A.VecSub(pB, pA)
+	-- H.constraintModel == "step": like the game (the constraint is a velocity constraint solved in the
+	-- physics step AFTER the scripts), so a SetBodyVelocity later in the same update does not win over it
+	if H.constraintModel == "step" then
+		b.pendingConstraint = { d = d, maxVel = maxVel }
+		return
+	end
 	local v = A.VecScale(d, 60)
 	local l = A.VecLength(v)
 	if maxVel and l > maxVel then v = A.VecScale(v, maxVel / l) end

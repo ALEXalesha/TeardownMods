@@ -97,7 +97,7 @@ T.check(H.bodies[crate].dynamic == true and sh().frozen[crate] == nil, "T again 
 -- clone and undo the clone
 local creates = callsOf("CreateShape")
 local nb0 = H.nextHandle
-T.press("g"); T.frames(2)
+T.press("p"); T.frames(2)
 T.check(callsOf("CreateShape") == creates + #H.bodies[crate].shapes, "clone creates one shape per source shape")
 T.check(callsOf("CopyShapeContent") >= 1, "clone copies voxel content")
 local clone = nil
@@ -112,7 +112,7 @@ H.P(1).pitch = -10
 H.P(1).yaw = -45
 T.frames(1)
 local aimed = cli().aimBody
-T.press("g"); T.frames(2)
+T.press("p"); T.frames(2)
 T.check(T.hasText("Not for vehicles") or aimed == 0, "cloning a vehicle is refused")
 T.env().server.grab(1, wheel, 7, 0.4, -4, 8)
 T.frames(2)

@@ -4,6 +4,14 @@
 
 ## English
 
+### 2026-10-16 (evening) - no key does two things when several mods are on
+
+- **Gravity Change**: key G or K (J is gone: it is Time Slow's speed key). If the game resets the gravity while the mod has another one chosen (for example after a quick load), the mod sets its gravity again; on Earth it never touches the level's gravity.
+- **Time Slow**: the speed key is a setting now, J or I; T is no longer offered for slow motion (it is the Mover's freeze). The hint at the start shows the keys you chose.
+- **Mover**: clone is P (G is Gravity Change's key, which works with any tool).
+- **Vehicle Remote**: taking another tool lets the car go, like the Camera Drone ends its flight (Q / V are keys of other tools too).
+- **Telekinesis**: texts now give the real energy numbers: 15 s for about 200 kg (lighter loads last up to twice as long), a throw costs 5-15%, refill starts 0.8 s after the hands are empty and is full in 9 s. The README said 10-15% per throw.
+
 ### 2026-10-16 - catapult built by measurement, arm turned by script, fire on Q
 
 - **Catapult**: the arm parts stood apart (the long beam 1.5 m low and 1.1 m back), the hinge held nothing and the arm did not move; the ammo lay crooked; F turned on the flashlight. Where the game puts a spawned model depends on its size, so the mod's one measurement on a small probe did not fit the other parts. Now the whole machine is first spawned out of sight, every part is measured and corrected, and the real one is checked again (each part within 5 cm). The arm turns by script about the axle instead of a spawned hinge that held nothing. Ammo is measured after it appears and laid on the bucket floor. Fire is now Q (F is the flashlight), turning Z/X (C is the game's camera view), angle V/B. The debug line has three lines: how far each part is from its place, whether the hub is on the axle, the arm angle and the last shot, and how much of the load is in the bucket.
@@ -37,6 +45,14 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 16.10.2026 (вечер) - одна клавиша больше не делает два дела, когда включено несколько модов
+
+- **Смена гравитации**: клавиша G или K (J убрана: это клавиша скорости «Замедления времени»). Если игра сбросит гравитацию, а в моде выбрана другая (например, после быстрой загрузки), мод снова ставит свою; на Земле гравитацию уровня не трогает.
+- **Замедление времени**: клавиша скорости теперь в настройках, J или I; T для замедления больше не предлагается (это заморозка «Перемещателя»). Подсказка в начале показывает выбранные клавиши.
+- **Перемещатель**: копия на P (G - клавиша «Смены гравитации», она работает с любым инструментом).
+- **Радиоуправление**: если взять другой инструмент, машина отпускается, как полёт «Дрона с камерой» (Q / V - клавиши и других инструментов).
+- **Телекинез**: в текстах настоящие числа энергии: 15 с для груза около 200 кг (лёгкого хватает до двух раз дольше), бросок стоит 5-15%, восстановление через 0,8 с после того, как руки пусты, полная через 9 с. В README было 10-15% за бросок.
 
 ### 2026-10-16 - катапульта собирается по замеру, рычаг поворачивает скрипт, выстрел на Q
 

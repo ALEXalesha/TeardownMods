@@ -133,6 +133,12 @@ function server.tick(dt)
 			if InputPressed("usetool", p) then server.grab(p) end
 		end
 		local c = server.c[p]
+		-- putting the remote away lets the car go, like the drone: Q / V are tool keys of other mods
+		-- (mover, catapult) and would act on the car too (16.10, _shared/tdlib/keymap.py)
+		if c and GetPlayerTool(p) ~= TOOL then
+			server.release(p)
+			c = nil
+		end
 		if c then server.drive(p, c, dt) end
 	end
 end

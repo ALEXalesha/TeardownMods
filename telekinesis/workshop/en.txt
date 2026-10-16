@@ -29,7 +29,8 @@ A telekinesis gauntlet. Lift the loose objects around your aim point into a spin
 [list]
 [*]Vehicles and players are never picked up
 [*]Putting the tool away drops everything
-[*]The energy time is for about 200 kg held in total: a lighter load lasts longer, a heavier one runs out sooner
+[*]The energy time is for about 200 kg held in total: a lighter load lasts longer (at most twice as long), a heavier one runs out sooner
+[*]A throw costs 5% (quick) to 15% (full charge) of the energy; it starts to refill 0.8 s after your hands are empty and is full again in 0.6 of the set time (9 s by default)
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

@@ -11,7 +11,8 @@ local function tr(pair) if ru() then return pair[2] end return pair[1] end
 local TITLE = { "Time Slow", "Замедление времени" }
 local SUBTITLE = { "Hold a key to slow the world down", "Удерживайте клавишу, чтобы замедлить мир" }
 local ROWS = {
-	{ kind = "choice", key = "key", label = { "Slow motion key", "Клавиша замедления" }, default = "h", choices = { { "h", "H", "H" }, { "y", "Y", "Y" }, { "t", "T", "T" }, { "mmb", "Middle mouse", "Средняя кнопка мыши" } } },
+	{ kind = "choice", key = "key", label = { "Slow motion key", "Клавиша замедления" }, default = "h", choices = { { "h", "H", "H" }, { "y", "Y", "Y" }, { "mmb", "Middle mouse", "Средняя кнопка мыши" } } },
+	{ kind = "choice", key = "speedkey", label = { "Speed key", "Клавиша скорости" }, default = "j", choices = { { "j", "J", "J" }, { "i", "I", "I" } } },
 	{ kind = "choice", key = "toggle", label = { "Mode", "Режим" }, default = false, choices = { { false, "Hold", "Удерживать" }, { true, "Toggle", "Нажать / отжать" } } },
 	{ kind = "choice", key = "preset", label = { "Starting speed", "Скорость при старте" }, default = 2, choices = { { 1, "x0.5", "x0,5" }, { 2, "x0.25", "x0,25" }, { 3, "x0.1", "x0,1" } }, int = true },
 	{ kind = "slider", key = "ramp", label = { "Ramp time", "Плавность входа" }, default = 0.35, min = 0.05, max = 1.5, fmt = { "%.2f s", "%.2f с" }, int = false, step = 0.05 },

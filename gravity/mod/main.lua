@@ -1,13 +1,14 @@
 #version 2
 -- Gravity Change / Смена гравитации
--- Press G to switch the scene gravity: Earth, Moon, Mars, zero-G, reverse,
--- sideways. Hold G to go back to Earth. Uses the real SetGravity (server-only,
+-- Press G (or K, options) to switch the scene gravity: Earth, Moon, Mars, zero-G, reverse,
+-- sideways. Hold it to go back to Earth. Uses the real SetGravity (server-only,
 -- smooth transition), wakes sleeping bodies in a budget so they react, keeps
 -- the player upright and gives Space/Ctrl thrusters in zero-G.
 
 #include "script/include/player.lua"
 
-local KEYS = { g = "G", j = "J", k = "K" }
+-- J went to Time Slow (speed) on 16.10: every key of every mod is in _shared/tdlib/keymap.py
+local KEYS = { g = "G", k = "K" }
 local EARTH = -10.0     -- Teardown's default gravity is (0, -10, 0)
 local WAKE_PER_TICK = 40
 local SCAN_INTERVAL = 1.0
@@ -97,6 +98,10 @@ function server.tick(dt)
 		if server.T <= 0 then server.t = 1 else server.t = math.min(1, server.t + dt / server.T) end
 		local k = server.t * server.t * (3 - 2 * server.t)
 		server.cur = VecLerp(server.from, server.target, k)
+		SetGravity(server.cur)
+	elseif shared.g.preset ~= 1 and VecLength(VecSub(GetGravity(), server.cur)) > 0.01 then
+		-- the scene gravity was reset under us (script_defs: "When the scene restarts, it resets to
+		-- the default value"), e.g. a quick load that restores this script's state: put ours back
 		SetGravity(server.cur)
 	end
 	local g = shared.g

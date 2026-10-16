@@ -11,7 +11,7 @@ A telekinesis gauntlet. Russian: [README.ru.md](README.ru.md).
 - Pick-up: a ray finds the aim point (40 m), then the nearest dynamic bodies within 3 m of it are taken: up to 8, each up to 200 kg. Vehicles and players are never picked.
 - Hover: the bodies are pulled with `ConstrainPosition` (server `update`) to slots on a slowly spinning ring 3 m in front of you; while charging the ring tightens, spins faster and comes closer.
 - Throw: released one after another every 0.04 s (a volley), speed 14-54 m/s depending on the charge and the throw power, heavy objects a bit slower, with a little spread and spin.
-- Energy: holding drains it (faster for heavier loads), a throw costs 10-15%; when it runs out the objects drop. It refills 0.8 s after your hands are empty. Can be switched off.
+- Energy: holding drains it - the set time (15 s) is for about 200 kg in total, a lighter load lasts longer (at most twice as long), a heavier one runs out sooner; a throw costs 5% (quick) to 15% (full charge); when it runs out the objects drop. It starts to refill 0.8 s after your hands are empty and is full again in 0.6 of the set time (9 s). Can be switched off. Law: `tests/energy_text_law.lua`.
 - Held objects get a violet outline and highlight; wisps run from your hand to them, sparkles around them; a hum loop rises with the charge; the gauntlet's orb glows brighter while charging.
 - Putting the tool away drops everything. Bodies are moved only by server code; clients only read them.
 

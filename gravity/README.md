@@ -4,7 +4,7 @@ Switch the gravity of the whole level. Russian: [README.ru.md](README.ru.md).
 
 | Key | Action |
 |---|---|
-| G (tap) | next preset: Earth -> Moon -> Mars -> zero-G -> reverse -> sideways -> Earth |
+| G (tap; K in the options) | next preset: Earth -> Moon -> Mars -> zero-G -> reverse -> sideways -> Earth |
 | G (hold 0.8 s) | back to Earth |
 | Space / Ctrl in zero-G | float up / down |
 
@@ -19,7 +19,7 @@ Switch the gravity of the whole level. Russian: [README.ru.md](README.ru.md).
 
 ## How it works
 
-- Real gravity: `SetGravity` on the scene (server code only: the `script_defs.lua` example uses `server.tick`; the harness now flags client calls). The change is a smooth blend over 1.5 s (option 0-5 s). The game resets gravity when the level restarts.
+- Real gravity: `SetGravity` on the scene (server code only: the `script_defs.lua` example uses `server.tick`; the harness now flags client calls). The change is a smooth blend over 1.5 s (option 0-5 s). The game resets gravity when the level restarts. If the scene gravity is reset while the mod still has another preset chosen (the script state survives, for example a quick load), the server sets the preset again on the next tick; on Earth the mod never touches the scene gravity (law `tests/quickload_law.lua`).
 - Resting bodies are asleep and would ignore a new gravity, so the mod wakes the dynamic bodies within 60 m of the players with `SetBodyActive`, 40 per tick, after scanning once per second.
 - The player follows the scene gravity (lower jumps feel floatier on the Moon by themselves). In zero-G the player is kept upright with `SetPlayerOrientation` and Space / Ctrl push up and down with a little drag.
 - Indicator (top right): preset name, strength in g, an arrow pointing to where "down" is from your view (a ring in zero-G) and the transition progress. Floating dust motes appear around you when gravity is low, a soft hum plays in zero-G, and a rising or falling sweep marks each change.
@@ -29,7 +29,7 @@ Switch the gravity of the whole level. Russian: [README.ru.md](README.ru.md).
 
 | Setting | Default | Key |
 |---|---|---|
-| Key G / J / K | G | `savegame.mod.key` |
+| Key G / K | G | `savegame.mod.key` |
 | Transition 0-5 s | 1.5 s | `savegame.mod.trans` |
 | Reverse strength | 4 m/s² | `savegame.mod.reverse` |
 | Sideways strength | 6 m/s² | `savegame.mod.sideways` |

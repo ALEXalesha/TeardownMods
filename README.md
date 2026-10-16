@@ -13,7 +13,7 @@ and its own README in English and Russian. Russian version of this page: [README
 | [earthquake](earthquake) | Earthquake | A seismic detonator. Start an earthquake at the aim point, from Weak to Catastrophic: things rock and tip over, buildings crack and fall, joints snap, aftershocks follow. Controls: LMB - start a quake at the aim point / stop it; RMB - next preset. Settings in the Mod Manager (Options). |
 | [falling-moon](falling-moon) | Falling Moon | A telescope that calls the moon down on the aim point. Over 1-5 minutes it grows in the sky, the ground trembles, dust and wind rise and a countdown runs; then it slams into the ground, sits in a huge crater as a real voxel moon, and its shockwave takes almost everything around with it. Controls: LMB - call the moon down on the aim point; RMB - send it back. Settings in the Mod Manager (Options). |
 | [gravity](gravity) | Gravity Change | Switch the real gravity of the whole level with one key: Earth, Moon, Mars, zero-G, reverse and sideways, with a smooth transition. Works with anything in hand. Controls: G (tap) - next preset; G (hold 0.8 s) - back to Earth; Space / Ctrl in zero-G - float up / down. Settings in the Mod Manager (Options). |
-| [mover](mover) | Mover | A gizmo gun that moves things: grab any loose object or vehicle, push and pull it, rotate it on three axes, freeze it in mid-air, clone it, resample it and undo your moves. Controls: Hold LMB - grab the aimed object; release drops it; Mouse wheel - push / pull; Q / R - rotate; Z / X - tilt; V / B - roll; T - freeze / unfreeze; G - clone; N / M - resample x0.5 / x2 (experimental); U - undo. Settings in the Mod Manager (Options). |
+| [mover](mover) | Mover | A gizmo gun that moves things: grab any loose object or vehicle, push and pull it, rotate it on three axes, freeze it in mid-air, clone it, resample it and undo your moves. Controls: Hold LMB - grab the aimed object; release drops it; Mouse wheel - push / pull; Q / R - rotate; Z / X - tilt; V / B - roll; T - freeze / unfreeze; P - clone; N / M - resample x0.5 / x2 (experimental); U - undo. Settings in the Mod Manager (Options). |
 | [portal-gun](portal-gun) | Portal Gun | Place a blue and an orange portal on flat surfaces and walk, fall or throw things through them. Momentum and direction are kept, so floor-to-wall flings work. Controls: LMB - blue portal; RMB - orange portal; R - close both. Settings in the Mod Manager (Options). |
 | [remote](remote) | Vehicle Remote | Point at any vehicle and drive it remotely, like an RC car, while you stay where you are. A chase camera, a signal range with static, and hopping from car to car. Controls: LMB on a vehicle - take control; on another one while driving: hop to it; W / S - throttle / reverse; A / D - steer; Space - handbrake; V - chase camera on / off; Q - let go. Settings in the Mod Manager (Options). |
 | [singularity-grenade](singularity-grenade) | Singularity Grenade | A throwable gravity grenade. It bounces, rises and opens into a short-lived singularity that pulls in debris, objects and players, squeezes them into a spinning orbit and then collapses in a blast. Controls: Hold LMB, release - throw (hold up to 1 s to throw farther); RMB - short toss at your feet. Settings in the Mod Manager (Options). |
@@ -24,6 +24,42 @@ and its own README in English and Russian. Russian version of this page: [README
 | [tsunami](tsunami) | Tsunami | A conch horn that calls a tsunami from where you look. A siren warns while the wave rises on the horizon, then a wall of water rolls in, throws cars, carries away objects and you, tears buildings apart, floods the ground and finally runs back. Controls: LMB - call a tsunami from where you look; RMB - call it off. Settings in the Mod Manager (Options). |
 | [volcano](volcano) | Volcano | A magma core tool. Raise a volcano on the ground in a few seconds and watch it erupt in phases: rumble and smoke, lava bombs that punch craters and start fires, lava flows, ash, and a final blast that blows the summit off. Controls: LMB on the ground - raise a volcano; RMB during the eruption - final blast now; R - remove the cones. Settings in the Mod Manager (Options). |
 <!-- /mods -->
+
+## Keys of all mods
+
+<!-- keys -->
+| Mod | Key | Where it works | What it does |
+|---|---|---|---|
+| Catapult | R | with the tool in hand | remove all catapults |
+| Catapult | Q | with the tool in hand | fire |
+| Catapult | Z / X | with the tool in hand | turn |
+| Catapult | V / B | with the tool in hand | angle |
+| Catapult | 1 / 2 / 3 / 4 | with the tool in hand | load |
+| Catapult | E | aiming at the machine, any tool | fire (the game's interact) |
+| Camera Drone | R | with the tool in hand | pick the drone up (on foot, within 4 m) |
+| Camera Drone | Q | flying the drone | back to your body (the drone keeps hovering) |
+| Camera Drone | P | flying the drone | photo mode |
+| Gravity Change | G (choice: G / K) | always | next gravity; hold 0.8 s: back to Earth |
+| Mover | Q / R | with the tool in hand | rotate |
+| Mover | Z / X | with the tool in hand | tilt |
+| Mover | V / B | with the tool in hand | roll |
+| Mover | T | with the tool in hand | freeze / unfreeze |
+| Mover | P | with the tool in hand | clone |
+| Mover | N / M | with the tool in hand | scale x0.5 / x2 |
+| Mover | U | with the tool in hand | undo |
+| Portal Gun | R | with the tool in hand | close both portals |
+| Vehicle Remote | Q | driving a car | let go |
+| Vehicle Remote | V | driving a car | chase camera on / off |
+| Time Slow | H (choice: H / Y / Middle mouse) | always | slow motion (hold or toggle) |
+| Time Slow | J (choice: J / I) | always | speed x0.5 / x0.25 / x0.1 |
+| Trampoline Floor | R | with the tool in hand | whole ground bounces on / off |
+| Volcano | R | with the tool in hand | remove the cones |
+
+Mouse only (LMB / RMB): Cutter, Earthquake, Falling Moon, Singularity Grenade, Telekinesis, Tornado, Tsunami.
+
+Game keys the mods never use for their own actions: W, A, S, D, Space, Ctrl, Shift, E, F, C, Tab, Esc, F4, F5, F6, F7, F8, F9; in the creative mode also Q, Z, M, Alt, Delete, 1-3. E on the catapult is the game's own interact action, aimed at the machine.
+"Always" keys are not used anywhere else: not by another mod and not among the choices in the options. Keys "with the tool in hand", "in the replay", "flying the drone" and "driving a car" may repeat between mods: only one tool is in the hands, the replay puts the tool away, the drone flight and the remote driving end when the drone or the remote is put away. Checked by the law `_shared/tdlib/keymap.py`.
+<!-- /keys -->
 
 
 ## Steam Workshop

@@ -12,7 +12,10 @@
 -- "player at normal speed" can only be approximated (walking speed boost).
 
 local PRESETS = { 0.5, 0.25, 0.1 }
-local KEYS = { h = "H", y = "Y", t = "T", mmb = "MMB" }
+-- T went to Mover (freeze) and J became a setting on 16.10: every key of every mod is in
+-- _shared/tdlib/keymap.py (a key that is always active must not be used by any other mod)
+local KEYS = { h = "H", y = "Y", mmb = "MMB" }
+local SPEED_KEYS = { j = "J", i = "I" }
 
 local function clamp(v, a, b) if v < a then return a elseif v > b then return b end return v end
 local function getF(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetFloat(key) end return d end
@@ -25,8 +28,11 @@ local function lerp(a, b, t) return a + (b - a) * t end
 function readSettings()
 	local key = getS("key", "h")
 	if not KEYS[key] then key = "h" end
+	local speedKey = getS("speedkey", "j")
+	if not SPEED_KEYS[speedKey] then speedKey = "j" end
 	return {
 		key = key,
+		speedKey = speedKey,
 		toggle = getB("toggle", false),
 		preset = math.floor(clamp(getI("preset", 2), 1, 3)),
 		ramp = clamp(getF("ramp", 0.35), 0.05, 1.5),
@@ -183,7 +189,7 @@ function client.tick(dt)
 	-- input
 	local usable = not GetBool("game.paused") and GetPlayerHealth() > 0
 	if usable then
-		if InputPressed("j") then
+		if InputPressed(s.speedKey) then
 			client.preset = (client.preset % #PRESETS) + 1
 			client.presetFlash = 2
 			PlaySound(client.snd.click, nil, 0.6)
@@ -300,11 +306,11 @@ function client.draw(dt)
 			UiFont("regular.ttf", 22)
 			UiTextShadow(0, 0, 0, 0.6, 1.5)
 			UiColor(1, 1, 1, math.min(1, client.hintT))
-			local key = KEYS[s.key]
+			local key, speed = KEYS[s.key], SPEED_KEYS[s.speedKey]
 			if s.toggle then
-				UiText(tr("Press " .. key .. ": slow motion, J: change speed", "Нажмите " .. key .. ": замедление, J: сменить скорость"))
+				UiText(tr("Press " .. key .. ": slow motion, " .. speed .. ": change speed", "Нажмите " .. key .. ": замедление, " .. speed .. ": сменить скорость"))
 			else
-				UiText(tr("Hold " .. key .. ": slow motion, J: change speed", "Удерживайте " .. key .. ": замедление, J: сменить скорость"))
+				UiText(tr("Hold " .. key .. ": slow motion, " .. speed .. ": change speed", "Удерживайте " .. key .. ": замедление, " .. speed .. ": сменить скорость"))
 			end
 		UiPop()
 	end

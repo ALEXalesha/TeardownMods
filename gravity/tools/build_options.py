@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "_shared", "tdlib"))
 from options_gen import gen_options  # noqa: E402
 
 ROWS = [
-    {"kind": "choice", "key": "key", "label": ("Key", "Клавиша"), "default": "g", "choices": [("g", "G", "G"), ("j", "J", "J"), ("k", "K", "K")]},
+    {"kind": "choice", "key": "key", "label": ("Key", "Клавиша"), "default": "g", "choices": [("g", "G", "G"), ("k", "K", "K")]},
     {"kind": "slider", "key": "trans", "label": ("Transition", "Плавность смены"), "min": 0, "max": 5, "default": 1.5, "fmt": ("%.1f s", "%.1f с"), "step": 0.1},
     {"kind": "slider", "key": "reverse", "label": ("Reverse strength", "Сила обратной"), "min": 1, "max": 10, "default": 4.0, "fmt": ("%.1f m/s²", "%.1f м/с²"), "step": 0.5},
     {"kind": "slider", "key": "sideways", "label": ("Sideways strength", "Сила боковой"), "min": 2, "max": 10, "default": 6.0, "fmt": ("%.1f m/s²", "%.1f м/с²"), "step": 0.5},

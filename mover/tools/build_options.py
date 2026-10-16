@@ -14,7 +14,7 @@ ROWS = [
     {"kind": "choice", "key": "rotsnap", "label": ("Rotation snap", "Шаг поворота"), "default": 0.0,
      "choices": [(0.0, "Off (smooth)", "Нет (плавно)"), (15.0, "15°", "15°"), (45.0, "45°", "45°"), (90.0, "90°", "90°")]},
     {"kind": "slider", "key": "rotspeed", "label": ("Rotation speed", "Скорость поворота"), "min": 30, "max": 360, "default": 90.0, "fmt": ("%.0f°/s", "%.0f°/с"), "step": 5},
-    {"kind": "choice", "key": "clone", "label": ("Cloning (G)", "Клонирование (G)"), "default": True, "choices": [(True, "On", "Вкл"), (False, "Off", "Выкл")]},
+    {"kind": "choice", "key": "clone", "label": ("Cloning (P)", "Клонирование (P)"), "default": True, "choices": [(True, "On", "Вкл"), (False, "Off", "Выкл")]},
     {"kind": "choice", "key": "scale", "label": ("Scaling (N/M)", "Масштаб (N/M)"), "default": True, "choices": [(True, "On (experimental)", "Вкл (опытный)"), (False, "Off", "Выкл")]},
     {"kind": "choice", "key": "help", "label": ("Controls panel", "Подсказка клавиш"), "default": True, "choices": [(True, "Show", "Показывать"), (False, "Hide", "Скрыть")]},
 ]

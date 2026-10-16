@@ -11,7 +11,7 @@ local function tr(pair) if ru() then return pair[2] end return pair[1] end
 local TITLE = { "Gravity Change", "Смена гравитации" }
 local SUBTITLE = { "Earth, Moon, Mars, zero-G, reverse, sideways", "Земля, Луна, Марс, невесомость, обратная, вбок" }
 local ROWS = {
-	{ kind = "choice", key = "key", label = { "Key", "Клавиша" }, default = "g", choices = { { "g", "G", "G" }, { "j", "J", "J" }, { "k", "K", "K" } } },
+	{ kind = "choice", key = "key", label = { "Key", "Клавиша" }, default = "g", choices = { { "g", "G", "G" }, { "k", "K", "K" } } },
 	{ kind = "slider", key = "trans", label = { "Transition", "Плавность смены" }, default = 1.5, min = 0, max = 5, fmt = { "%.1f s", "%.1f с" }, int = false, step = 0.1 },
 	{ kind = "slider", key = "reverse", label = { "Reverse strength", "Сила обратной" }, default = 4.0, min = 1, max = 10, fmt = { "%.1f m/s²", "%.1f м/с²" }, int = false, step = 0.5 },
 	{ kind = "slider", key = "sideways", label = { "Sideways strength", "Сила боковой" }, default = 6.0, min = 2, max = 10, fmt = { "%.1f m/s²", "%.1f м/с²" }, int = false, step = 0.5 },

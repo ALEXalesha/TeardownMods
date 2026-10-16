@@ -15,7 +15,7 @@ Drive any vehicle remotely, like an RC car, while you stay where you are. Russia
 - The player's body is held with `DisablePlayerInput` while driving (option), so WASD only drives the car.
 - Chase camera: behind and above the car, mouse orbits, pulled in front of walls; V switches back to your own eyes.
 - Hopping with the chase camera on aims from that camera (the server repeats the ray itself and checks that it starts at the driven car); if the middle ray hits no car, a car within 10 degrees of the view counts, and if there is none either, what the body itself looks at. Keys held during the hop act on the new car at once.
-- Signal range 150 m: from 75% of it the picture gets static with a static sound; past it the link is lost, the car brakes with the handbrake, and after 3 s it is released; the body stays held all that time. If the player dies, the car is released.
+- Signal range 150 m: from 75% of it the picture gets static with a static sound; past it the link is lost, the car brakes with the handbrake, and after 3 s it is released; the body stays held all that time. If the player dies or takes another tool, the car is released (Q and V are also keys of other mods' tools).
 - The controlled car has a cyan outline, the aimed one a white outline. HUD: speed, damage (from `GetVehicleHealth`), signal bars, controls.
 - A car that another player drives (or sits in) cannot be taken. If the vehicle disappears, control ends.
 

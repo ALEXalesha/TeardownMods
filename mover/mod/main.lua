@@ -516,6 +516,7 @@ local MESSAGES = {
 }
 
 local KEYS_ROT = { { "q", 1, -1 }, { "r", 1, 1 }, { "z", 2, -1 }, { "x", 2, 1 }, { "v", 3, -1 }, { "b", 3, 1 } }
+local KEY_CLONE = "p"
 
 function client.init()
 	client.snd = {}
@@ -626,7 +627,9 @@ function client.tick(dt)
 		if InputPressed("t") then
 			if target ~= 0 then ServerCall("server.freeze", me, target) end
 		end
-		if InputPressed("g") and target ~= 0 then ServerCall("server.clone", me, target) end
+		-- clone on P, not G: G is Gravity Change's key, which works with any tool (16.10,
+		-- _shared/tdlib/keymap.py); P is the only letter no always-active mod key uses
+		if InputPressed(KEY_CLONE) and target ~= 0 then ServerCall("server.clone", me, target) end
 		if InputPressed("n") and target ~= 0 then ServerCall("server.scale", me, target, 0.5) end
 		if InputPressed("m") and target ~= 0 then ServerCall("server.scale", me, target, 2) end
 		if InputPressed("u") then ServerCall("server.undoLast", me) end
@@ -726,7 +729,7 @@ function client.draw(dt)
 			{ "Z / X", tr("tilt (pitch)", "наклон (тангаж)") },
 			{ "V / B", tr("roll", "крен") },
 			{ "T", tr("freeze / unfreeze", "заморозить / разморозить") },
-			{ "G", tr("clone", "клонировать") },
+			{ string.upper(KEY_CLONE), tr("clone", "клонировать") },
 			{ "N / M", tr("scale x0.5 / x2", "масштаб x0,5 / x2") },
 			{ "U", tr("undo last move", "отменить ход") },
 		}

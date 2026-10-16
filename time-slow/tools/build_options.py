@@ -8,7 +8,9 @@ from options_gen import gen_options  # noqa: E402
 
 ROWS = [
     {"kind": "choice", "key": "key", "label": ("Slow motion key", "Клавиша замедления"), "default": "h",
-     "choices": [("h", "H", "H"), ("y", "Y", "Y"), ("t", "T", "T"), ("mmb", "Middle mouse", "Средняя кнопка мыши")]},
+     "choices": [("h", "H", "H"), ("y", "Y", "Y"), ("mmb", "Middle mouse", "Средняя кнопка мыши")]},
+    {"kind": "choice", "key": "speedkey", "label": ("Speed key", "Клавиша скорости"), "default": "j",
+     "choices": [("j", "J", "J"), ("i", "I", "I")]},
     {"kind": "choice", "key": "toggle", "label": ("Mode", "Режим"), "default": False,
      "choices": [(False, "Hold", "Удерживать"), (True, "Toggle", "Нажать / отжать")]},
     {"kind": "choice", "key": "preset", "label": ("Starting speed", "Скорость при старте"), "default": 2, "int": True,

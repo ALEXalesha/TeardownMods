@@ -17,7 +17,7 @@ A gizmo gun that moves things: grab any loose object or vehicle, push and pull i
 [*][b]Z / X[/b] - tilt
 [*][b]V / B[/b] - roll
 [*][b]T[/b] - freeze / unfreeze
-[*][b]G[/b] - clone
+[*][b]P[/b] - clone
 [*][b]N / M[/b] - resample x0.5 / x2 (experimental)
 [*][b]U[/b] - undo
 [/list]
@@ -28,7 +28,7 @@ A gizmo gun that moves things: grab any loose object or vehicle, push and pull i
 [*]Position snap: [i]off[/i]
 [*]Rotation snap: [i]off[/i]
 [*]Rotation speed: [i]90 °/s[/i]
-[*]Cloning: [i]on[/i]
+[*]Cloning (P): [i]on[/i]
 [*]Scaling: [i]on[/i]
 [*]Controls panel: [i]show[/i]
 [/list]

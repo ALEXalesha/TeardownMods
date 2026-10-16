@@ -18,7 +18,7 @@ Switch the real gravity of the whole level with one key: Earth, Moon, Mars, zero
 [/list]
 [h2]Settings (Mod Manager - the mod - Options)[/h2]
 [list]
-[*]Key G / J / K: [i]G[/i]
+[*]Key G / K: [i]G[/i]
 [*]Transition 0-5 s: [i]1.5 s[/i]
 [*]Reverse strength: [i]4 m/s²[/i]
 [*]Sideways strength: [i]6 m/s²[/i]
@@ -30,6 +30,7 @@ Switch the real gravity of the whole level with one key: Earth, Moon, Mars, zero
 [h2]Known limits[/h2]
 [list]
 [*]Gravity goes back to normal when the level restarts
+[*]If the game resets the gravity while the mod still has another one chosen (for example after a quick load), the mod sets its gravity again
 [*]Objects farther than the wake radius keep sleeping until something touches them
 [/list]
 

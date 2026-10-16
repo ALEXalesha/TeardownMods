@@ -16,7 +16,7 @@ local ROWS = {
 	{ kind = "choice", key = "possnap", label = { "Position snap", "Привязка к сетке" }, default = 0.0, choices = { { 0.0, "Off", "Нет" }, { 0.1, "0.1 m", "0,1 м" }, { 0.25, "0.25 m", "0,25 м" }, { 0.5, "0.5 m", "0,5 м" }, { 1.0, "1 m", "1 м" } } },
 	{ kind = "choice", key = "rotsnap", label = { "Rotation snap", "Шаг поворота" }, default = 0.0, choices = { { 0.0, "Off (smooth)", "Нет (плавно)" }, { 15.0, "15°", "15°" }, { 45.0, "45°", "45°" }, { 90.0, "90°", "90°" } } },
 	{ kind = "slider", key = "rotspeed", label = { "Rotation speed", "Скорость поворота" }, default = 90.0, min = 30, max = 360, fmt = { "%.0f°/s", "%.0f°/с" }, int = false, step = 5 },
-	{ kind = "choice", key = "clone", label = { "Cloning (G)", "Клонирование (G)" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
+	{ kind = "choice", key = "clone", label = { "Cloning (P)", "Клонирование (P)" }, default = true, choices = { { true, "On", "Вкл" }, { false, "Off", "Выкл" } } },
 	{ kind = "choice", key = "scale", label = { "Scaling (N/M)", "Масштаб (N/M)" }, default = true, choices = { { true, "On (experimental)", "Вкл (опытный)" }, { false, "Off", "Выкл" } } },
 	{ kind = "choice", key = "help", label = { "Controls panel", "Подсказка клавиш" }, default = true, choices = { { true, "Show", "Показывать" }, { false, "Hide", "Скрыть" } } },
 }

@@ -30,6 +30,7 @@ Point at any vehicle and drive it remotely, like an RC car, while you stay where
 [list]
 [*]A car that another player drives cannot be taken
 [*]Past the signal range the car brakes and is released after 3 s
+[*]Taking another tool lets the car go
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

@@ -10,7 +10,7 @@ A gizmo gun for Teardown 2.x that moves things. Russian: [README.ru.md](README.r
 | Z / X | tilt (pitch) |
 | V / B | roll |
 | T | freeze the aimed or held body in place / unfreeze |
-| G | clone the body next to the original |
+| P | clone the body next to the original (P, not G: G is Gravity Change's key) |
 | N / M | resample voxels x0.5 / x2 (experimental, small objects) |
 | U | undo the last move, freeze or clone |
 
@@ -43,7 +43,7 @@ the aimed body a white one. A panel on the right lists the keys (can be hidden).
 | Position snap off/0.1/0.25/0.5/1 m | off | `savegame.mod.possnap` |
 | Rotation snap off/15/45/90° | off | `savegame.mod.rotsnap` |
 | Rotation speed 30-360°/s | 90 | `savegame.mod.rotspeed` |
-| Cloning | on | `savegame.mod.clone` |
+| Cloning (P) | on | `savegame.mod.clone` |
 | Scaling | on | `savegame.mod.scale` |
 | Controls panel | show | `savegame.mod.help` |
 

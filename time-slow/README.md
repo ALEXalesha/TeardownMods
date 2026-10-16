@@ -2,8 +2,8 @@
 
 Hold a key to slow the world down. Russian: [README.ru.md](README.ru.md).
 
-- **H** (hold, or toggle; the key can be H, Y, T or the middle mouse button) - slow motion;
-- **J** - switch the speed: x0.5, x0.25, x0.1;
+- **H** (hold, or toggle; the key can be H, Y or the middle mouse button) - slow motion;
+- **J** (or I, options) - switch the speed: x0.5, x0.25, x0.1; the hint at the start shows the keys you chose;
 - smooth ramp in and out (0.05-1.5 s, measured in real time with `GetTime`, so it does not slow itself down);
 - blue tint and desaturation through `SetPostProcessingProperty("saturation" / "colorbalance")`; the original values are read when the effect starts and written back when it ends;
 - music low-pass (`SetMusicLowPass`), heartbeat loop (`UiSoundLoop`), whooshes on enter and exit, a blue vignette;
@@ -24,7 +24,8 @@ Hold a key to slow the world down. Russian: [README.ru.md](README.ru.md).
 
 | Setting | Default | Key |
 |---|---|---|
-| Slow motion key: H / Y / T / middle mouse | H | `savegame.mod.key` |
+| Slow motion key: H / Y / middle mouse | H | `savegame.mod.key` |
+| Speed key: J / I | J | `savegame.mod.speedkey` |
 | Mode: hold / toggle | hold | `savegame.mod.toggle` |
 | Starting speed x0.5 / x0.25 / x0.1 | x0.25 | `savegame.mod.preset` |
 | Ramp time 0.05-1.5 s | 0.35 s | `savegame.mod.ramp` |

@@ -1,6 +1,7 @@
 """Every offline check of every mod, without rebuilding assets (CI and local use):
 the harness on every tests/*.lua, check_mod.py on every mod folder, the upload check of every
-upload folder and the upload check's self-test. Exit code 1 if anything fails.
+upload folder, the upload check's self-test and the key law of all mods together (keymap.py:
+no key does two things when several mods are on). Exit code 1 if anything fails.
 
     python _shared/tdlib/ci_all.py
 """
@@ -28,6 +29,16 @@ def main() -> int:
     print("upload check self-test:", "OK" if not fails else "FAIL " + "; ".join(fails))
     if fails:
         failed.append("self-test")
+    import keymap
+    kfails = keymap.self_test()
+    kprobs = keymap.check(keymap.KEYMAP, keymap.read_sources()) + keymap.stale_readmes()
+    print("key law:", "OK" if not (kfails or kprobs) else "FAIL")
+    for p in kprobs:
+        print("  KEY CLASH:", p)
+    if kfails:
+        print("  key law self-test missed:", ", ".join(kfails))
+    if kfails or kprobs:
+        failed.append("key law")
     mods = sorted(n for n in os.listdir(ROOT) if os.path.isfile(os.path.join(ROOT, n, "mod", "info.txt")))
     for m in mods:
         mod_dir = os.path.join(ROOT, m, "mod")

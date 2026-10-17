@@ -187,6 +187,8 @@ T.check(grows and maxPsi > psi0 + 60, string.format("the arm angle grows during 
 T.check(#lineAngles >= 2 and lineAngles[#lineAngles] > lineAngles[1] + 30, string.format("debug line: angle grows while firing (%s -> %s)", tostring(lineAngles[1]), tostring(lineAngles[#lineAngles])))
 T.frames(2)
 local thrown = 0
+-- the mod throws fresh, awake copies of its load (in-game 17.10 the sleeping ones hung in the air)
+for i, b in ipairs(crates) do local rep = srv().replaced or {} while rep[b] do b = rep[b] end crates[i] = b end
 for _, b in ipairs(crates) do if A.IsHandleValid(b) and A.VecLength(H.bodies[b].vel) > 10 then thrown = thrown + 1 end end
 T.check(thrown == 6, "all six crates are thrown (" .. thrown .. ")")
 line = debugText()

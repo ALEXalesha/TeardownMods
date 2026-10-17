@@ -16,6 +16,10 @@
 --     full swing speed. The game solves constraints in the physics step AFTER the script, so the load
 --     left with the bucket's speed (about 50 m/s at any power), not the planned 14-56 m/s.
 --     Stand: H.constraintModel = "step".
+-- 17.10 (2a46c03) in-game: "the car flies fine now, the other loads just stay hanging in the air": the
+-- boulder, barrel and crates, asleep in the bucket, were moved to the release point and nothing woke them
+-- (not SetBodyActive either). Stand: activeWakes = false, vehicleAwake = true (the car flew). The mod now
+-- throws a fresh, awake copy of its load; the law follows the load by its number.
 -- The law, for each of the 4 loads (1-4) at two powers: every body of the load is released, leaves at
 -- the planned speed (2 %), does not collide with the catapult's arm and frame while it leaves, no body of
 -- it is deleted in flight (also with the automatic reload in between), and it lands where the arc
@@ -27,7 +31,7 @@ local function cli() return T.cenv().client end
 local A = H.API
 
 H.spawnModel = { pivot = "field", physics = true, contentBounds = true, trimEmpty = true, boundsDelay = 1, shapesDelay = 1, dynamicDelay = 1, jointsAttach = false, com = true }
-H.sleepModel = { restSleep = 1.0, velocityWakes = false, constraintWakes = false }
+H.sleepModel = { restSleep = 1.0, velocityWakes = false, constraintWakes = false, activeWakes = false, vehicleAwake = true }
 H.constraintModel = "step"
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
@@ -77,6 +81,8 @@ for _, power in ipairs({ 0.05, 0.6 }) do
 		local bodies = {}
 		for _, g in ipairs(c.groups or {}) do for _, b in ipairs(g.bodies) do bodies[#bodies + 1] = b end end
 		local main = c.groups[1] and c.groups[1].bodies[1]
+		local mainLoad = nil
+		for _, a in ipairs(srv().ammo) do if a.body == main then mainLoad = a.load end end
 		local asleep = 0
 		for _, b in ipairs(bodies) do if not A.IsBodyActive(b) then asleep = asleep + 1 end end
 		local arc = cli().arc
@@ -86,11 +92,36 @@ for _, power in ipairs({ 0.05, 0.6 }) do
 		local want = 14 + 42 * power
 		T.press("q"); T.frames(1)
 		local released = nil
+		local far, d0 = 0, nil
 		for i = 1, 120 do
 			T.frames(1)
 			if c.state ~= "swing" then released = true break end
+			-- carried with the bucket (a load asleep in the bucket is not moved by a constraint)
+			local bf = srv().bucketFloor(c)
+			local bp = H.bodies[main].pos
+			local d = math.sqrt((bp[1] - bf[1]) ^ 2 + (bp[2] - bf[2]) ^ 2 + (bp[3] - bf[3]) ^ 2)
+			d0 = d0 or d
+			far = math.max(far, math.abs(d - d0))
 		end
 		T.check(released, tag .. ": the shot is released")
+		T.check(far < 1.0, string.format("%s: the load is carried with the bucket while it swings (its distance to the floor changes by %.2f m)", tag, far))
+		-- the load is followed by its load number: the mod may replace a body by a fresh copy when it throws it
+		local loadId = mainLoad
+		if loadId then
+			local now = {}
+			for _, a in ipairs(srv().ammo) do if a.load == loadId then now[#now + 1] = a.body end end
+			local before = bodies
+			if #now == #bodies then bodies = now end
+			main = bodies[1]
+			-- a replaced body does not stay behind, hanging where it was
+			local left = 0
+			for _, b in ipairs(before) do
+				local still = false
+				for _, nb in ipairs(bodies) do if nb == b then still = true end end
+				if not still and A.IsHandleValid(b) then left = left + 1 end
+			end
+			T.check(left == 0, tag .. ": no old copy of the load is left behind (" .. left .. ")")
+		end
 		-- right after the release step: the real speed, measured by how far each body moves in the next
 		-- step (GetBodyVelocity of a sleeping body returns the stored velocity although it does not move)
 		local p0 = {}
@@ -147,4 +178,40 @@ for _, power in ipairs({ 0.05, 0.6 }) do
 		T.runUntil(function() return c.state == "ready" end, 600)
 		T.frames(5)
 	end
+end
+
+-- the safety net: a thrown load that does not really move (the game left it out of the simulation once
+-- more) is put on its arc, awake, and still lands where the preview showed. Stand: the fresh copy is put
+-- to sleep right after the release.
+do
+	T.press("1"); T.frames(3)
+	T.runUntil(function() local g = c.groups and c.groups[1] return g and g.placed end, 120)
+	c.power = 0.4
+	srv().sync()
+	T.frames(60)
+	local land = cli().arc and cli().arc.land
+	local main = c.groups[1] and c.groups[1].bodies[1]
+	T.press("q"); T.frames(1)
+	T.runUntil(function() return c.state ~= "swing" end, 120)
+	local rep = srv().replaced or {}
+	while rep[main] do main = rep[main] end
+	local bd = H.bodies[main]
+	bd.active, bd.slept, bd.vel = false, true, { 0, 0, 0 }
+	local p0 = { bd.pos[1], bd.pos[2], bd.pos[3] }
+	local landed = nil
+	for i = 1, 900 do
+		T.frames(1)
+		rep = srv().replaced or {}
+		while rep[main] do main = rep[main] end
+		local b = H.bodies[main]
+		if b and b.valid and b.pos[2] <= 0.2 and i > 10 then landed = { b.pos[1], b.pos[3] } break end
+	end
+	if landed and land then
+		local range = math.sqrt((land[1] - c.base[1]) ^ 2 + (land[3] - c.base[3]) ^ 2)
+		local miss = math.sqrt((landed[1] - land[1]) ^ 2 + (landed[2] - land[3]) ^ 2)
+		T.check(miss <= math.max(2, 0.03 * range), string.format("a thrown load left asleep is put back on its arc and lands %.1f m from the preview (range %.0f m)", miss, range))
+	else
+		T.check(false, "a thrown load left asleep is put back on its arc and lands (it stays at " .. string.format("%.1f %.1f %.1f", p0[1], p0[2], p0[3]) .. ")")
+	end
+	T.check(T.env().server.stuck ~= nil and T.env().server.stuck >= 1, "the debug line counts it as stuck (" .. tostring(T.env().server.stuck) .. ")")
 end

@@ -41,6 +41,9 @@ local function throw(power)
 		if c.state ~= "swing" then rel = c.lastLaunch break end
 	end
 	if not rel or not boulder then return nil end
+	-- the mod throws a fresh, awake copy of its load (in-game 17.10 the sleeping one hung in the air)
+	local rep = srv().replaced or {}
+	while rep[boulder] do boulder = rep[boulder] end
 	local b = H.bodies[boulder]
 	local relPos = { b.pos[1], b.pos[2], b.pos[3] }
 	local relVel = { b.vel[1], b.vel[2], b.vel[3] }

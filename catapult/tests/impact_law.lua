@@ -8,7 +8,7 @@ local function V(x, y, z) return { x, y, z } end
 local function sh() return T.sharedOf() end
 local function srv() return T.env().server end
 
-T.budget("Spawn", 2)
+T.budget("Spawn", 7)                -- a volley of 6 crates is thrown as 6 fresh, awake copies in one update
 T.budget("MakeHole", 8)
 T.budget("SpawnParticle", 40)
 T.budget("QueryRaycast", 80)

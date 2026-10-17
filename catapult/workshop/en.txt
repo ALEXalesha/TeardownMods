@@ -6,7 +6,7 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [*]Full-power boulder flies about 300 m (power on the mouse wheel, angle 20-70°)
 [*]Predicted arc and landing ring before you fire
 [*]Impacts punch holes by speed and material: wood easily, brick from 25 m/s, hard materials from 45 m/s; boulders punch through, barrels explode
-[*]Ride it: stand in the bucket and get launched (no fall damage by default)
+[*]Ride it: RMB puts you into the bucket and launches you along the arc (no fall damage by default)
 [*]The machine can be blown apart; up to 4 catapults at once
 [*]Own models and sounds: creaking wood, the swing, the release, whistling flight, impacts
 [/list]
@@ -18,7 +18,7 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [*][b]Z / X[/b] - turn left / right
 [*][b]V / B[/b] - lower / raise the angle
 [*][b]1 2 3 4[/b] - load a boulder / barrel / car / crates
-[*][b]RMB[/b] - load the selected ammo
+[*][b]RMB[/b] - get into the bucket and be launched
 [*][b]R[/b] - remove all catapults
 [/list]
 [h2]Settings (Mod Manager - the mod - Options)[/h2]

@@ -8,7 +8,7 @@
 --   Q, or E on it   fire           (F is the game's flashlight)
 --   mouse wheel     power
 --   Z / X           turn left / right          V / B   lower / raise the angle   (C is the game's camera key)
---   1 2 3 4         load a boulder / barrel / car / crates      RMB  load the selected ammo
+--   1 2 3 4         load a boulder / barrel / car / crates      RMB  ride: get into the bucket and be launched
 --   R               remove all catapults and their ammo
 --
 -- Assembly by measurement (in-game 16.10, after three rounds of guessing the game's vox pivot):
@@ -314,13 +314,14 @@ function server.tick(dt)
 			if InputPressed("usetool", p) then server.place(p) end
 			if InputPressed("grab", p) and GetPlayerGrabBody(p) == 0 then
 				local c = nearestCat(GetPlayerTransform(p).pos)
-				if c then server.load(c, c.ammo) end
+				if c then server.ride(c, p) end
 			end
 		end
 	end
 	-- launched players: no fall damage unless the option says so
 	for p, pr in pairs(server.protect) do
 		pr.t = pr.t + dt
+		if pr.ghost and pr.t >= GHOST_TIME then pr.ghost = nil server.ghostPlayer(p, false) end
 		if not readSettings().falldamage then SetPlayerHealth(1, p) end
 		local v = GetPlayerVelocity(p)
 		if pr.t > 0.5 and math.abs(v[2]) < 0.5 then pr.landed = (pr.landed or 0) + dt end
@@ -544,6 +545,50 @@ local function trimAmmo(extra, kind)
 	end
 end
 
+-- one load body each (the body's origin is where it is spawned)
+local AMMO_XML = {
+	boulder = "<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>",
+	barrel = "<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>",
+	crate = "<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>",
+	hulk = "<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/hulk.vox' scale='3' tags='catapult_ammo'/></body>",
+}
+
+-- A thrown load must be in the simulation. In-game 17.10 (2a46c03) the boulder, the barrel and the crates,
+-- asleep after lying still in the bucket, were moved to the release point (SetBodyTransform works on a
+-- sleeping body) and hung there in the air: neither SetBodyActive(true), nor SetBodyVelocity, nor a
+-- constraint brought them back into the simulation; only the car (a vehicle) flew. A body that has just
+-- been spawned is awake, and SetBodyVelocity right after Spawn is how the game itself throws things
+-- (data/script/snowball.lua, level/hub/script/skeet.lua). So a mod load is spawned anew at its place and
+-- the old body deleted; its records follow the new handle. Returns the body and its shapes.
+function server.respawnAwake(b, t)
+	local a = nil
+	for _, r in ipairs(server.ammo) do if r.body == b then a = r end end
+	if a and a.xml then
+		local ents = Spawn(a.xml, t)
+		local nb, shapes = nil, {}
+		for i = 1, #(ents or {}) do
+			local ty = GetEntityType(ents[i])
+			if ty == "body" and not nb then nb = ents[i] elseif ty == "shape" then shapes[#shapes + 1] = ents[i] end
+		end
+		if nb then
+			if IsHandleValid(b) then Delete(b) end
+			a.body = nb
+			server.respawns = (server.respawns or 0) + 1
+			-- old handle -> new one (the laws follow a thrown load by it); bounded
+			server.replacedN = (server.replacedN or 0) + 1
+			if server.replacedN > 300 then server.replaced, server.replacedN = {}, 1 end
+			server.replaced = server.replaced or {}
+			server.replaced[b] = nb
+			return nb, shapes
+		end
+		deleteSpawned(ents)
+	end
+	-- not one of the mod's own loads (the game's car, anything else in the bucket): move it, wake it
+	SetBodyTransform(b, t)
+	SetBodyActive(b, true)
+	return b, GetBodyShapes(b)
+end
+
 -- where each load group's bottom centre goes, relative to the bucket floor centre (catapult axes)
 local CRATE_SLOTS = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.93, -0.5 }, { 0, 0.93, 0.5 } }
 
@@ -565,13 +610,18 @@ function server.load(c, kind)
 	-- spawned near the bucket (its exact place is measured once it exists, see server.placeLoad)
 	local ents
 	local groups = {}
+	-- the text of each body (in spawn order), kept so that the body can be spawned anew, awake, when it is
+	-- thrown (see server.respawnAwake); none for the game's car prefab
+	local xmls = {}
 	if name == "boulder" then
 		trimAmmo(1, name)
-		ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/boulder.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
+		xmls[1] = AMMO_XML.boulder
+		ents = Spawn(xmls[1], Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
 		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "barrel" then
 		trimAmmo(1, name)
-		ents = Spawn("<body dynamic='true' tags='catapult_barrel catapult_ammo'><vox file='MOD/vox/barrel.vox' scale='3' tags='catapult_ammo'/></body>", Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
+		xmls[1] = AMMO_XML.barrel
+		ents = Spawn(xmls[1], Transform(VecAdd(floor, Vec(0, 1.0, 0)), rot))
 		groups[1] = { slot = Vec(0, 0, 0) }
 	elseif name == "crates" then
 		trimAmmo(6, name)
@@ -580,6 +630,7 @@ function server.load(c, kind)
 			local s = CRATE_SLOTS[i]
 			xml = xml .. "<body dynamic='true' tags='catapult_ammo' pos='" .. fmt3(Vec(s[1], s[2] + 0.5, s[3])) .. "'><vox file='MOD/vox/crate.vox' scale='3' tags='catapult_ammo'/></body>"
 			groups[i] = { slot = Vec(s[1], s[2], s[3]) }
+			xmls[i] = AMMO_XML.crate
 		end
 		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
 	elseif name == "car" then
@@ -591,7 +642,8 @@ function server.load(c, kind)
 		local any = false
 		for i = 1, #(ents or {}) do if GetEntityType(ents[i]) == "body" then any = true SetTag(ents[i], "catapult_ammo") end end
 		if not any then
-			ents = Spawn("<body dynamic='true' tags='catapult_ammo'><vox file='MOD/vox/hulk.vox' scale='3' tags='catapult_ammo'/></body>", t)
+			xmls[1] = AMMO_XML.hulk
+			ents = Spawn(xmls[1], t)
 		end
 		groups[1] = { slot = Vec(0, 0, 0), rim = true, all = true }
 	end
@@ -600,7 +652,7 @@ function server.load(c, kind)
 	for i = 1, #(ents or {}) do
 		if GetEntityType(ents[i]) == "body" then
 			bodies[#bodies + 1] = ents[i]
-			server.ammo[#server.ammo + 1] = { body = ents[i], kind = name, cat = c.id, load = server.loadN }
+			server.ammo[#server.ammo + 1] = { body = ents[i], kind = name, cat = c.id, load = server.loadN, xml = xmls[#bodies] }
 		end
 	end
 	-- one body per group (crates: in spawn order), or all bodies in one group (the car and its wheels)
@@ -675,7 +727,9 @@ function server.loadInBucket(c)
 	return n, m, lowest
 end
 
-function server.fire(c)
+-- `riders`: players put into the bucket by RMB this update ({ p, pos }; their transform may not read back
+-- until the next update)
+function server.fire(c, riders)
 	if c.broken or c.state ~= "ready" then return end
 	local bodies, players = server.contents(c)
 	-- also every body of the loaded groups (a car's wheels may stick out of the bucket's box)
@@ -688,18 +742,28 @@ function server.fire(c)
 	c.held = {}
 	for i = 1, #bodies do
 		local b = bodies[i]
-		local kind = "other"
-		for j = 1, #server.ammo do if server.ammo[j].body == b then kind = server.ammo[j].kind end end
-		c.held[#c.held + 1] = { body = b, off = TransformToLocalPoint(armT, GetBodyTransform(b).pos), kind = kind }
-		-- a load lying still is out of the simulation, and neither a constraint nor SetBodyVelocity wakes it:
-		-- in-game 17.10 the arm swung through the boulder, the barrel and the crates
-		SetBodyActive(b, true)
+		if IsHandleValid(b) then
+			local kind = "other"
+			for j = 1, #server.ammo do if server.ammo[j].body == b then kind = server.ammo[j].kind end end
+			c.held[#c.held + 1] = { body = b, off = TransformToLocalPoint(armT, GetBodyTransform(b).pos), kind = kind }
+			-- a load lying still is out of the simulation, and neither a constraint nor SetBodyVelocity wakes it:
+			-- in-game 17.10 the arm swung through the boulder, the barrel and the crates
+			SetBodyActive(b, true)
+		end
 	end
 	c.heldPlayers = {}
+	local isRider = {}
+	for _, r in ipairs(riders or {}) do
+		isRider[r.p] = true
+		c.heldPlayers[#c.heldPlayers + 1] = { p = r.p, off = TransformToLocalPoint(armT, r.pos) }
+	end
 	for i = 1, #players do
 		local p = players[i]
-		c.heldPlayers[#c.heldPlayers + 1] = { p = p, off = TransformToLocalPoint(armT, GetPlayerTransform(p).pos) }
+		if not isRider[p] then c.heldPlayers[#c.heldPlayers + 1] = { p = p, off = TransformToLocalPoint(armT, GetPlayerTransform(p).pos) } end
 	end
+	-- a thrown player passes through the catapult's arm and frame until shortly after the release (the
+	-- player stands in the bucket, which would stop him at the release point)
+	for _, hp in ipairs(c.heldPlayers) do server.ghostPlayer(hp.p, true) end
 	c.state = "swing"
 	c.t = 0
 	c.shotFrom = c.psiRest + c.theta
@@ -733,6 +797,51 @@ end
 -- had already put the load on a position constraint towards the moving arm and given the arm its full
 -- swing speed; the game solves constraints in the physics step after the script, so the load left with
 -- the bucket's speed (about 50 m/s at any power) instead of the planned one.
+-- a released load does not collide with any catapult's arm or frame for GHOST_TIME (kept in `ghost`)
+function server.ghostShapes(ghost, shapes)
+	for _, sh in ipairs(shapes or {}) do
+		if IsHandleValid(sh) then
+			local layer, mask = GetShapeCollisionFilter(sh)
+			ghost.shapes[#ghost.shapes + 1] = { sh = sh, layer = layer, mask = mask }
+			SetShapeCollisionFilter(sh, LAYER_LOAD, 255 - LAYER_ARM - LAYER_FRAME)
+		end
+	end
+end
+-- the same for a player (CollisionMask: the player's mask against the shapes' layers, script_defs)
+function server.ghostPlayer(p, on)
+	server.playerMask = server.playerMask or {}
+	if on then
+		if server.playerMask[p] == nil then
+			local m = GetPlayerParam("CollisionMask", p)
+			server.playerMask[p] = (type(m) == "number" and m > 0) and m or 255
+		end
+		SetPlayerParam("CollisionMask", 255 - LAYER_ARM - LAYER_FRAME, p)
+	elseif server.playerMask[p] ~= nil then
+		SetPlayerParam("CollisionMask", server.playerMask[p], p)
+		server.playerMask[p] = nil
+	end
+end
+
+-- RMB with the catapult tool: the player rides. In-game 17.10: "RMB load should load me into the catapult
+-- and send me" - it loaded the selected ammo again. The bucket's own load goes (the rider is not thrown
+-- together with a boulder), the player is put on the bucket floor and the catapult fires at once.
+function server.ride(c, p)
+	if c.broken or c.state ~= "ready" then return end
+	local floor = server.bucketFloor(c)
+	local keep = {}
+	for _, a in ipairs(server.ammo) do
+		if a.cat == c.id and IsHandleValid(a.body) and VecLength(VecSub(GetBodyTransform(a.body).pos, floor)) < 4 then Delete(a.body) else keep[#keep + 1] = a end
+	end
+	server.ammo = keep
+	c.groups = {}
+	c.loaded = nil
+	local pos = VecAdd(floor, Vec(0, 0.05, 0))
+	SetPlayerTransform(Transform(pos, GetPlayerTransform(p).rot), p)
+	SetPlayerVelocity(Vec(0, 0, 0), p)
+	c.rides = (c.rides or 0) + 1
+	server.fire(c, { { p = p, pos = pos } })
+end
+
 function server.releaseLoad(c, theta)
 	local fwd = VecScale(server.back(c), -1)
 	local th = math.rad(c.angle)
@@ -744,28 +853,30 @@ function server.releaseLoad(c, theta)
 	for i = 1, #c.held do
 		local h = c.held[i]
 		if IsHandleValid(h.body) then
-			local t = GetBodyTransform(h.body)
-			SetBodyTransform(h.body, Transform(TransformToParentPoint(pose, h.off), t.rot))
-			SetBodyActive(h.body, true)
-			SetBodyVelocity(h.body, v)
+			local at = Transform(TransformToParentPoint(pose, h.off), GetBodyTransform(h.body).rot)
+			-- a fresh, awake copy of a mod load (see server.respawnAwake)
+			local b, shapes = server.respawnAwake(h.body, at)
+			h.body = b
+			SetBodyVelocity(b, v)
 			-- one spin for the whole load; none for the car (its wheels spinning apart from its body would
 			-- tear them off)
-			SetBodyAngularVelocity(h.body, (h.kind == "car") and Vec(0, 0, 0) or spin)
-			for _, sh in ipairs(GetBodyShapes(h.body)) do
-				local layer, mask = GetShapeCollisionFilter(sh)
-				ghost.shapes[#ghost.shapes + 1] = { sh = sh, layer = layer, mask = mask }
-				SetShapeCollisionFilter(sh, LAYER_LOAD, 255 - LAYER_ARM - LAYER_FRAME)
-			end
+			SetBodyAngularVelocity(b, (h.kind == "car") and Vec(0, 0, 0) or spin)
+			server.ghostShapes(ghost, shapes)
 			if #server.flying < MAX_FLYING then
-				server.flying[#server.flying + 1] = { body = h.body, kind = h.kind, t = 0, prev = VecCopy(v), n = 0, from = VecCopy(server.bucketFloor(c)), cat = c.id }
+				server.flying[#server.flying + 1] = { body = b, kind = h.kind, t = 0, prev = VecCopy(v), n = 0, from = VecCopy(server.bucketFloor(c)), cat = c.id,
+					p0 = VecCopy(at.pos), v0 = VecCopy(v), tries = 0 }
 			end
 		end
 	end
 	if #ghost.shapes > 0 then server.ghosts[#server.ghosts + 1] = ghost end
 	for i = 1, #c.heldPlayers do
 		local hp = c.heldPlayers[i]
+		-- at its place in the bucket at the release angle (where the arc preview starts), then the velocity:
+		-- SetPlayerTransform resets the player's velocity (script_defs)
+		local pt = GetPlayerTransform(hp.p)
+		SetPlayerTransform(Transform(TransformToParentPoint(pose, hp.off), pt.rot), hp.p)
 		SetPlayerVelocity(v, hp.p)
-		server.protect[hp.p] = { t = 0 }
+		server.protect[hp.p] = { t = 0, ghost = true }
 	end
 	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = c.psiRest + (theta or c.theta), held = #c.held + #c.heldPlayers }
 	c.lastShot = string.format("last shot: angle %+.0f -> %+.0f, released %d at %.0f m/s", c.shotFrom or 0, c.psiRest + (theta or c.theta), #c.held + #c.heldPlayers, speed)
@@ -784,7 +895,14 @@ function server.update(dt)
 	for i = #server.cats, 1, -1 do
 		local c = server.cats[i]
 		if not IsHandleValid(c.frame) or not IsHandleValid(c.arm) or not IsHandleValid(c.axle) or not IsHandleValid(c.hub) then
-			if not c.broken then c.broken = true c.state = "broken" server.sync() end
+			if not c.broken then
+				c.broken = true
+				c.state = "broken"
+				-- a player held in the bucket when it broke collides with everything again
+				for _, hp in ipairs(c.heldPlayers or {}) do server.ghostPlayer(hp.p, false) end
+				c.heldPlayers = {}
+				server.sync()
+			end
 		elseif c.state == "settle" then
 			c.t = c.t + dt
 			server.holdArm(c, 0)
@@ -833,12 +951,16 @@ function server.update(dt)
 				c.theta = c.theta + SWING * dt
 				server.holdArm(c, SWING)
 				c.shotTo = c.psiRest + c.theta
-				local armT = server.armPose(c, c.theta)
+				local armT, P, axis = server.armPose(c, c.theta)
+				local wv = VecScale(axis, -math.rad(SWING))
+				-- the load is carried with the bucket by moving it (a constraint does not move a load asleep
+				-- in the bucket - in-game 17.10 - and SetBodyTransform does), at the bucket's velocity
 				for j = 1, #c.held do
 					local h = c.held[j]
 					if IsHandleValid(h.body) then
-						SetBodyActive(h.body, true)
-						ConstrainPosition(h.body, 0, GetBodyTransform(h.body).pos, TransformToParentPoint(armT, h.off), 80)
+						local at = TransformToParentPoint(armT, h.off)
+						SetBodyTransform(h.body, Transform(at, GetBodyTransform(h.body).rot))
+						SetBodyVelocity(h.body, VecCross(wv, VecSub(at, P)))
 					end
 				end
 				for j = 1, #c.heldPlayers do
@@ -879,6 +1001,40 @@ function server.update(dt)
 	server.updateFlying(dt, s)
 end
 
+-- a released load that does not really move (measured by its position, not GetBodyVelocity, which returns
+-- the set velocity of a sleeping body) is put where its arc says it should be by now, awake, with the
+-- arc's velocity; up to 3 times. The debug line counts these ("stuck").
+function server.flightCheck(f)
+	if not f.p0 or f.moving or f.t < 0.1 then return end
+	local moved = VecLength(VecSub(GetBodyTransform(f.body).pos, f.p0))
+	if moved >= 0.3 * VecLength(f.v0) * f.t then f.moving = true return end
+	if f.tries >= 3 then f.moving = true return end
+	-- something in the way of the arc right there is a real hit, not a sleeping body
+	local cur = GetBodyTransform(f.body).pos
+	local g0 = GetGravity()
+	local want = VecAdd(VecAdd(f.p0, VecScale(f.v0, f.t)), VecScale(g0, 0.5 * f.t * f.t))
+	local d = VecSub(want, cur)
+	local l = VecLength(d)
+	if l > 0.01 then
+		QueryRejectBody(f.body)
+		QueryRequire("physical")
+		for _, c in ipairs(server.cats) do QueryRejectBody(c.frame) QueryRejectBody(c.arm) end
+		if QueryRaycast(cur, VecScale(d, 1 / l), l) then f.moving = true return end
+	end
+	f.tries = f.tries + 1
+	server.stuck = (server.stuck or 0) + 1
+	local g = GetGravity()
+	local p = VecAdd(VecAdd(f.p0, VecScale(f.v0, f.t)), VecScale(g, 0.5 * f.t * f.t))
+	local v = VecAdd(f.v0, VecScale(g, f.t))
+	local b, shapes = server.respawnAwake(f.body, Transform(p, GetBodyTransform(f.body).rot))
+	f.body = b
+	SetBodyVelocity(b, v)
+	local ghost = { shapes = {}, t = 0 }
+	server.ghostShapes(ghost, shapes)
+	if #ghost.shapes > 0 then server.ghosts[#server.ghosts + 1] = ghost end
+	f.p0, f.v0, f.t, f.prev = p, v, 0, VecCopy(v)
+end
+
 -- impacts: a sudden loss of speed is a hit; holes by speed and material
 function server.updateFlying(dt, s)
 	local holes = 0
@@ -888,6 +1044,7 @@ function server.updateFlying(dt, s)
 		if not IsHandleValid(f.body) then
 			table.remove(server.flying, i)
 		else
+			server.flightCheck(f)
 			local v = GetBodyVelocity(f.body)
 			local sp = VecLength(f.prev)
 			local dv = VecLength(VecSub(v, f.prev))
@@ -968,8 +1125,8 @@ function server.debugInfo(c)
 	local placed = 0
 	for _, g in ipairs(c.groups or {}) do if g.placed then placed = placed + 1 end end
 	local l1 = string.format("catapult: %s | parts off m:%s | spawns %d", c.state, parts, c.spawns or 0)
-	local l2 = string.format("%s | arm angle %+.0f (rest %+.0f) | %s | fire: Q or E",
-		hinge, server.psi(c), c.psiRest or -REST, c.lastShot or "no shot yet")
+	local l2 = string.format("%s | arm angle %+.0f (rest %+.0f) | %s | respawned awake %d, stuck %d, rides %d | fire: Q or E",
+		hinge, server.psi(c), c.psiRest or -REST, c.lastShot or "no shot yet", server.respawns or 0, server.stuck or 0, c.rides or 0)
 	local l3 = string.format("load %d/%d in bucket | %s | placed %d/%d%s%s", n, m, c.loadDbg or "no load yet", placed, #(c.groups or {}),
 		c.loadMoved and string.format(", moved into place by %.2f m", c.loadMoved) or "",
 		lowest and string.format(", lowest %.2f m above the floor", lowest) or "")
@@ -1272,8 +1429,8 @@ function client.draw(dt)
 			UiTranslate(0, 26)
 			UiFont("regular.ttf", 18)
 			UiColor(1, 1, 1, 0.8)
-			UiText(tr("Q or E: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   RMB: load   R: remove all",
-				"Q или E: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   ПКМ: зарядить   R: убрать все"))
+			UiText(tr("Q or E: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   RMB: ride   R: remove all",
+				"Q или E: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   ПКМ: полететь самому   R: убрать все"))
 		else
 			UiText(tr("LMB: place a catapult in front of you   R: remove all", "ЛКМ: поставить катапульту перед собой   R: убрать все"))
 		end

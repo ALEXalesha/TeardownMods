@@ -621,7 +621,17 @@ A.SetBodyAngularVelocity = function(h, v) local b = B(h, "SetBodyAngularVelocity
 A.GetBodyAngularVelocity = function(h) local b = B(h, "GetBodyAngularVelocity"); if not b then return V() end return A.VecCopy(b.angvel) end
 A.SetBodyGravityScale = function(h, s) local b = B(h); if b then b.gravityScale = s end end
 A.IsBodyActive = function(h) local b = B(h, "IsBodyActive"); return b ~= nil and b.active end
-A.SetBodyActive = function(h, a) local b = B(h, "SetBodyActive"); if b then b.active = a; if a then b.restT = 0 end end end
+-- H.sleepModel.activeWakes == false: a body that fell asleep at rest is not put back into the simulation by
+-- SetBodyActive(h, true) either. In-game 17.10 (after 2a46c03 added SetBodyActive): the catapult's boulder,
+-- barrel and crates, asleep in the bucket, were moved to the release point by SetBodyTransform and hung there
+-- in the air ("the other loads just stay hanging in the air"); only the car flew. Only a fresh Spawn is awake.
+A.SetBodyActive = function(h, a)
+	local b = B(h, "SetBodyActive")
+	if not b then return end
+	if a and b.slept and H.sleepModel and H.sleepModel.activeWakes == false then return end
+	b.active = a
+	if a then b.restT = 0 end
+end
 A.ApplyBodyImpulse = function(h, pos, imp)
 	local b = B(h, "ApplyBodyImpulse")
 	if not b then return end
@@ -958,6 +968,7 @@ A.Spawn = function(xml, transform, allowStatic, jointExisting)
 				end
 			end
 			H.bodies[cur].spawnedXml = content
+			if content:find("<wheel") then H.bodies[cur].vehicleBody = true end
 		elseif tag == "vox" or tag == "voxbox" then
 			local sizes = nil
 			local scale = tonumber(parseAttr(attrs, "scale") or "1") or 1
@@ -1271,7 +1282,8 @@ local function eyeT(p) return A.Transform(A.VecAdd(p.pos, V(0, 1.7, 0)), A.QuatE
 H.eyeT = eyeT
 A.GetPlayerTransform = function(id) local p = P(id); return A.Transform(p.pos, yawRot(p)) end
 A.GetPlayerTransformWithPitch = function(id) local p = P(id); return A.Transform(p.pos, A.QuatEuler(p.pitch, p.yaw, 0)) end
-A.SetPlayerTransform = function(t, id) local p = P(id); p.pos = A.VecCopy(t.pos); local _, y = A.GetQuatEuler(t.rot); p.yaw = y end
+-- script_defs: "Instantly teleport the player ... Player velocity will be reset to zero."
+A.SetPlayerTransform = function(t, id) local p = P(id); p.pos = A.VecCopy(t.pos); local _, y = A.GetQuatEuler(t.rot); p.yaw = y; p.vel = V() end
 A.SetPlayerTransformWithPitch = function(t, id) local p = P(id); p.pos = A.VecCopy(t.pos); local x, y = A.GetQuatEuler(t.rot); p.yaw = y; p.pitch = x end
 A.GetPlayerEyeTransform = function(id) return eyeT(P(id)) end
 A.GetPlayerCameraTransform = function(id) return eyeT(P(id)) end
@@ -1333,7 +1345,7 @@ A.GetPlayerParam = function(name, id)
 	local p = P(id)
 	p.params = p.params or {}
 	local v = p.params[name]
-	if v == nil then if name == "flymode" or name == "godmode" then return false end return 0 end
+	if v == nil then if name == "flymode" or name == "godmode" then return false end if name == "CollisionMask" then return 255 end return 0 end
 	return v
 end
 A.SetPlayerParam = function(name, value, id) local p = P(id); p.params = p.params or {}; p.params[name] = value end
@@ -1710,10 +1722,13 @@ function H.physicsStep(dt)
 	-- the simulation" (IsBodyActive in script_defs) - a dynamic body at rest that long falls asleep
 	if H.sleepModel and H.sleepModel.restSleep then
 		for h, b in pairs(H.bodies) do
-			if b.valid and b.dynamic and b.active ~= false and h ~= H.worldBody and not b.isTool then
+			-- vehicleAwake: a vehicle's bodies are kept in the simulation (in-game 17.10 the car on the rim
+			-- always flew while the boulder, barrel and crates hung)
+			local exempt = H.sleepModel.vehicleAwake and b.vehicleBody
+			if b.valid and b.dynamic and b.active ~= false and h ~= H.worldBody and not b.isTool and not exempt then
 				if A.VecLength(b.vel) < 0.05 and A.VecLength(b.angvel) < 0.05 then
 					b.restT = (b.restT or 0) + dt
-					if b.restT >= H.sleepModel.restSleep then b.active = false b.vel = V() b.angvel = V() end
+					if b.restT >= H.sleepModel.restSleep then b.active = false b.slept = true b.vel = V() b.angvel = V() end
 				else
 					b.restT = 0
 				end

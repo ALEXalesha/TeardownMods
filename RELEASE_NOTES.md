@@ -4,6 +4,11 @@
 
 ## English
 
+### 2026-10-17 (afternoon) - catapult: every load flies, RMB launches you; replay mod replays you too
+
+- **Catapult**: "the car finally fires properly, but the other loads just stay hanging in the air". The boulder, the barrel and the crates lie still in the bucket and the game takes them out of the simulation; in the game nothing brought them back (not even waking them up by script), so they were moved to the release point and hung there. The car, a vehicle, stayed in the simulation and flew. Now the mod throws a fresh copy of its load at the release (a just-created object is always simulated, the way the game itself throws things), carries the load with the bucket during the swing by moving it, and if a thrown load still does not move it is put on its arc again (up to 3 times).
+- **Catapult**: "RMB load should load me into the catapult and send me". RMB with the catapult in hand now puts you into the bucket of the nearest ready catapult (its own load is taken out), fires at once and throws you along the aiming arc; you pass through the catapult while you leave it and take no fall damage by default.
+
 ### 2026-10-17 - replay mod: one third-person camera that stays out of walls; catapult loads fly
 
 - **Catapult**: every load flies along the aiming arc and the car no longer vanishes after a shot (the load is woken up before the throw, the car counts as one load, the load is released exactly at the release angle with the planned speed).
@@ -54,6 +59,11 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 17.10.2026 (день) - катапульта: летят все снаряды, ПКМ запускает вас; мод повтора повторяет и вас
+
+- **Катапульта**: «машина наконец-то выстреливается нормально, а другие снаряды просто остаются висеть в воздухе». Валун, бочка и ящики лежат в ковше неподвижно, и игра выводит их из симуляции; в игре их ничто не возвращало (даже пробуждение скриптом), поэтому они переносились в точку спуска и висели там. Машина - транспорт - оставалась в симуляции и летела. Теперь мод бросает свежую копию своего снаряда в момент спуска (только что созданный предмет всегда в симуляции - так бросает предметы сама игра), во время взмаха переносит груз вместе с ковшом, а если брошенный груз всё равно не движется, ставит его на дугу ещё раз (до 3 раз).
+- **Катапульта**: «кнопка зарядить ПКМ должна заряжать меня в катапульту и отправлять». ПКМ с катапультой в руках теперь сажает вас в ковш ближайшей готовой катапульты (её снаряд убирается), сразу стреляет и бросает вас по дуге прицела; пока вы вылетаете, катапульта вас не задерживает, урона от падения по умолчанию нет.
 
 ### 17.10.2026 - мод повтора: одна камера от третьего лица, не заходит в стены; снаряды катапульты летят
 

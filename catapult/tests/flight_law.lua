@@ -197,6 +197,7 @@ do
 	while rep[main] do main = rep[main] end
 	local bd = H.bodies[main]
 	bd.active, bd.slept, bd.vel = false, true, { 0, 0, 0 }
+	H.sleepModel.impulseWakes = false
 	local p0 = { bd.pos[1], bd.pos[2], bd.pos[3] }
 	local landed = nil
 	for i = 1, 900 do
@@ -214,4 +215,5 @@ do
 		T.check(false, "a thrown load left asleep is put back on its arc and lands (it stays at " .. string.format("%.1f %.1f %.1f", p0[1], p0[2], p0[3]) .. ")")
 	end
 	T.check(T.env().server.stuck ~= nil and T.env().server.stuck >= 1, "the debug line counts it as stuck (" .. tostring(T.env().server.stuck) .. ")")
+	H.sleepModel.impulseWakes = nil
 end

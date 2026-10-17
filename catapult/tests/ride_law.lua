@@ -14,6 +14,9 @@ local A = H.API
 H.spawnModel = { pivot = "field", physics = true, contentBounds = true, trimEmpty = true, boundsDelay = 1, shapesDelay = 1, dynamicDelay = 1, jointsAttach = false, com = true }
 H.sleepModel = { restSleep = 1.0, velocityWakes = false, constraintWakes = false, activeWakes = false, vehicleAwake = true }
 H.constraintModel = "step"
+-- in-game 17.10 (80eed03): "I fly only half the way, then the speed runs out" - the player's own air
+-- movement eats a velocity set once; the launched player is carried along the arc until he lands
+H.playerAirDrag = 1.5
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
 T.load("main.lua", "main")

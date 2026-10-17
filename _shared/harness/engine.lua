@@ -637,6 +637,9 @@ A.ApplyBodyImpulse = function(h, pos, imp)
 	if not b then return end
 	if not b.dynamic then H.warn("ApplyBodyImpulse on static body " .. h) return end
 	b.vel = A.VecAdd(b.vel, A.VecScale(imp, 1 / math.max(b.mass, 0.001)))
+	-- H.sleepModel.impulseWakes == false: the worst case, nothing wakes a sleeping body (the game itself wakes
+	-- bodies with an impulse, data/script/awake.lua; the catapult's safety net must hold even without it)
+	if b.slept and H.sleepModel and H.sleepModel.impulseWakes == false then return end
 	b.active = true
 	local s = A.VecLength(b.vel)
 	if s > 500 then err("body speed exploded: " .. s) end
@@ -1796,6 +1799,9 @@ function H.physicsStep(dt)
 	for _, id in ipairs(H.playerOrder) do
 		local p = H.players[id]
 		p.vel = A.VecAdd(p.vel, A.VecScale(H.gravity, dt))
+		-- H.playerAirDrag (1/s): the player's own air movement eats a set velocity. In-game 17.10 a player
+		-- launched once by SetPlayerVelocity flew "only half the way, then the speed runs out"
+		if H.playerAirDrag and p.pos[2] > 0.01 then local k = math.max(0, 1 - H.playerAirDrag * dt) p.vel[1] = p.vel[1] * k p.vel[3] = p.vel[3] * k end
 		p.pos = A.VecAdd(p.pos, A.VecScale(p.vel, dt))
 		if p.pos[2] < 0 then p.pos[2] = 0; p.vel[2] = 0; p.vel[1] = p.vel[1] * 0.8; p.vel[3] = p.vel[3] * 0.8 end
 	end

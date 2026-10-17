@@ -66,6 +66,11 @@ local function getI(k, d) local key = "savegame.mod." .. k if HasKey(key) then r
 local function getB(k, d) local key = "savegame.mod." .. k if HasKey(key) then return GetBool(key) end return d end
 local function tr(en, ru) if GetInt("options.language") == 7 then return ru end return en end
 local function fmt3(v) return string.format("%.4f %.4f %.4f", v[1], v[2], v[3]) end
+-- the arc of a released load: where it should be and how fast, f.t seconds after the release
+local function arcAt(f, t)
+	local g = GetGravity()
+	return VecAdd(VecAdd(f.p0, VecScale(f.v0, t)), VecScale(g, 0.5 * t * t)), VecAdd(f.v0, VecScale(g, t))
+end
 
 function readSettings()
 	return {
@@ -318,15 +323,41 @@ function server.tick(dt)
 			end
 		end
 	end
-	-- launched players: no fall damage unless the option says so
+	-- a just released load: its velocity once more in tick, where the game's own scripts throw (see server.kick)
+	for _, f in ipairs(server.flying) do
+		if not f.ticked and not f.moving and IsHandleValid(f.body) then
+			f.ticked = true
+			local _, v = arcAt(f, f.t)
+			server.kick(f.body, v)
+		end
+	end
+	-- launched players: carried along the arc, no fall damage unless the option says so
 	for p, pr in pairs(server.protect) do
 		pr.t = pr.t + dt
+		if pr.fly then server.flyPlayer(p, pr) end
 		if pr.ghost and pr.t >= GHOST_TIME then pr.ghost = nil server.ghostPlayer(p, false) end
 		if not readSettings().falldamage then SetPlayerHealth(1, p) end
 		local v = GetPlayerVelocity(p)
 		if pr.t > 0.5 and math.abs(v[2]) < 0.5 then pr.landed = (pr.landed or 0) + dt end
 		if (pr.landed or 0) > 1.5 or pr.t > 30 then server.protect[p] = nil end
 	end
+end
+
+-- In-game 17.10 (80eed03): "the catapult sends me, but I fly only half the way, then the speed runs out,
+-- and not the same every time" - one SetPlayerVelocity at the release, and the player's own movement in
+-- the air ate it. So the launched player is given the arc's velocity every tick until he lands or the arc
+-- runs into something (he moved much less than the arc says - a wall, a roof), and then he is let go.
+function server.flyPlayer(p, pr)
+	local g = GetGravity()
+	local cur = GetPlayerTransform(p).pos
+	local dt = pr.t - pr.lastT
+	if pr.t > 0.2 and dt > 0 then
+		local vPrev = VecAdd(pr.v0, VecScale(g, pr.lastT))
+		local moved = VecLength(VecSub(cur, pr.last))
+		if IsPlayerGrounded(p) or GetPlayerVehicle(p) ~= 0 or pr.t > 20 or moved < 0.4 * VecLength(vPrev) * dt then pr.fly = nil return end
+	end
+	pr.last, pr.lastT = VecCopy(cur), pr.t
+	SetPlayerVelocity(VecAdd(pr.v0, VecScale(g, pr.t)), p)
 end
 
 -- LMB: find the ground, then (over the next ticks) measure and assemble. Every refusal tells the
@@ -560,6 +591,16 @@ local AMMO_XML = {
 -- been spawned is awake, and SetBodyVelocity right after Spawn is how the game itself throws things
 -- (data/script/snowball.lua, level/hub/script/skeet.lua). So a mod load is spawned anew at its place and
 -- the old body deleted; its records follow the new handle. Returns the body and its shapes.
+-- In-game 17.10 (80eed03): the fresh copies hung too ("respawned awake 32, stuck 24", the crates went about
+-- 5 m further, only as far as the stuck fix moved them, and stopped). The game wakes a body with an
+-- impulse - data/script/awake.lua applies a zero ApplyBodyImpulse to every body it wakes - and sets a thrown
+-- body's velocity in tick (snowball.lua, skeet.lua), while this mod released in update. So every launch
+-- velocity goes with a waking impulse, and the first ticks of a flight set it once more.
+function server.kick(b, v)
+	SetBodyVelocity(b, v)
+	ApplyBodyImpulse(b, TransformToParentPoint(GetBodyTransform(b), GetBodyCenterOfMass(b)), Vec(0, 0, 0))
+end
+
 function server.respawnAwake(b, t)
 	local a = nil
 	for _, r in ipairs(server.ammo) do if r.body == b then a = r end end
@@ -857,7 +898,7 @@ function server.releaseLoad(c, theta)
 			-- a fresh, awake copy of a mod load (see server.respawnAwake)
 			local b, shapes = server.respawnAwake(h.body, at)
 			h.body = b
-			SetBodyVelocity(b, v)
+			server.kick(b, v)
 			-- one spin for the whole load; none for the car (its wheels spinning apart from its body would
 			-- tear them off)
 			SetBodyAngularVelocity(b, (h.kind == "car") and Vec(0, 0, 0) or spin)
@@ -876,7 +917,8 @@ function server.releaseLoad(c, theta)
 		local pt = GetPlayerTransform(hp.p)
 		SetPlayerTransform(Transform(TransformToParentPoint(pose, hp.off), pt.rot), hp.p)
 		SetPlayerVelocity(v, hp.p)
-		server.protect[hp.p] = { t = 0, ghost = true }
+		local p0 = TransformToParentPoint(pose, hp.off)
+		server.protect[hp.p] = { t = 0, ghost = true, fly = true, p0 = p0, v0 = VecCopy(v), last = VecCopy(p0), lastT = 0 }
 	end
 	c.lastLaunch = { pos = server.bucketFloor(c), vel = v, speed = speed, psi = c.psiRest + (theta or c.theta), held = #c.held + #c.heldPlayers }
 	c.lastShot = string.format("last shot: angle %+.0f -> %+.0f, released %d at %.0f m/s", c.shotFrom or 0, c.psiRest + (theta or c.theta), #c.held + #c.heldPlayers, speed)
@@ -1001,38 +1043,75 @@ function server.update(dt)
 	server.updateFlying(dt, s)
 end
 
--- a released load that does not really move (measured by its position, not GetBodyVelocity, which returns
--- the set velocity of a sleeping body) is put where its arc says it should be by now, awake, with the
--- arc's velocity; up to 3 times. The debug line counts these ("stuck").
-function server.flightCheck(f)
-	if not f.p0 or f.moving or f.t < 0.1 then return end
-	local moved = VecLength(VecSub(GetBodyTransform(f.body).pos, f.p0))
-	if moved >= 0.3 * VecLength(f.v0) * f.t then f.moving = true return end
-	if f.tries >= 3 then f.moving = true return end
-	-- something in the way of the arc right there is a real hit, not a sleeping body
+-- a hit: holes by speed and material, boulders punch on through, barrels explode. Returns the holes made.
+function server.impact(f, pos, sp, dir, s, budget)
+	local holes = 0
+	local k = AMMO_K[f.kind] or AMMO_K.other
+	local e = sp * s.damage
+	local r0 = clamp(0.065 * e * k, 0.6, 5)
+	local r1 = (e >= 25) and r0 * 0.75 or r0 * 0.3
+	local r2 = (e >= 45) and r0 * 0.35 or 0
+	if budget > 0 then MakeHole(VecAdd(pos, VecScale(dir, 0.4)), r0, r1, r2) holes = 1 end
+	if f.kind == "boulder" and f.n == 0 then
+		for d = 1, 2 do
+			if holes < budget then
+				MakeHole(VecAdd(pos, VecScale(dir, 1.5 * d)), r0 * (1 - 0.2 * d), r1 * (1 - 0.2 * d), r2 * (1 - 0.2 * d))
+				holes = holes + 1
+			end
+		end
+	end
+	if f.kind == "barrel" and f.n == 0 and VecLength(VecSub(pos, f.from)) > 12 then Explosion(pos, 2.5) end
+	f.n = f.n + 1
+	server.impacts[#server.impacts + 1] = { speed = sp, pos = pos, kind = f.kind }
+	local cp = shared.cp
+	cp.impN = cp.impN + 1
+	cp.ix, cp.iy, cp.iz, cp.isp = pos[1], pos[2], pos[3], sp
+	return holes
+end
+
+-- A released load that does not really fly by itself (measured by its position since it was last set,
+-- not by GetBodyVelocity, which returns the set velocity of a sleeping body) is carried along its arc:
+-- put where the arc says it should be now, with the arc's velocity and a waking impulse, every update
+-- while it does not fly by itself (checked over the whole flight, not only at the start), until the arc runs
+-- into something - then that is its hit, and it drops there.
+-- In-game 17.10 (80eed03) this was capped at 3 corrections, and the crates stopped about 5 m on. The
+-- debug line counts the loads that needed it ("stuck"). Returns the holes made.
+function server.flightCheck(f, s, budget)
+	if not f.p0 or f.moving or f.n > 0 then return 0 end
+	local ref, tr = f.setPos or f.p0, f.setT or 0
+	local dt = f.t - tr
+	if dt < 0.05 then return 0 end
 	local cur = GetBodyTransform(f.body).pos
-	local g0 = GetGravity()
-	local want = VecAdd(VecAdd(f.p0, VecScale(f.v0, f.t)), VecScale(g0, 0.5 * f.t * f.t))
+	local _, vref = arcAt(f, tr)
+	-- flying by itself for now: checked again from here (a body can fall asleep in mid-air later on)
+	if VecLength(VecSub(cur, ref)) >= 0.3 * VecLength(vref) * dt then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+	-- in the simulation and stopped: something stopped it (the hit is found by its loss of speed)
+	if IsBodyActive(f.body) then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+	if f.t > 20 then f.moving = true return 0 end
+	local want, v = arcAt(f, f.t)
 	local d = VecSub(want, cur)
 	local l = VecLength(d)
 	if l > 0.01 then
-		QueryRejectBody(f.body)
+		local dir = VecScale(d, 1 / l)
 		QueryRequire("physical")
+		for _, o in ipairs(server.flying) do if IsHandleValid(o.body) then QueryRejectBody(o.body) end end
 		for _, c in ipairs(server.cats) do QueryRejectBody(c.frame) QueryRejectBody(c.arm) end
-		if QueryRaycast(cur, VecScale(d, 1 / l), l) then f.moving = true return end
+		local hit, dist = QueryRaycast(cur, dir, l)
+		if hit then
+			local hp = VecAdd(cur, VecScale(dir, math.max(0, dist - 0.05)))
+			SetBodyTransform(f.body, Transform(hp, GetBodyTransform(f.body).rot))
+			local holes = server.impact(f, VecAdd(cur, VecScale(dir, dist)), VecLength(v), dir, s, budget)
+			server.kick(f.body, VecScale(v, 0.2))
+			f.moving = true
+			return holes
+		end
 	end
-	f.tries = f.tries + 1
-	server.stuck = (server.stuck or 0) + 1
-	local g = GetGravity()
-	local p = VecAdd(VecAdd(f.p0, VecScale(f.v0, f.t)), VecScale(g, 0.5 * f.t * f.t))
-	local v = VecAdd(f.v0, VecScale(g, f.t))
-	local b, shapes = server.respawnAwake(f.body, Transform(p, GetBodyTransform(f.body).rot))
-	f.body = b
-	SetBodyVelocity(b, v)
-	local ghost = { shapes = {}, t = 0 }
-	server.ghostShapes(ghost, shapes)
-	if #ghost.shapes > 0 then server.ghosts[#server.ghosts + 1] = ghost end
-	f.p0, f.v0, f.t, f.prev = p, v, 0, VecCopy(v)
+	if not f.counted then f.counted = true server.stuck = (server.stuck or 0) + 1 end
+	SetBodyTransform(f.body, Transform(want, GetBodyTransform(f.body).rot))
+	server.kick(f.body, v)
+	f.setPos, f.setT = VecCopy(want), f.t
+	f.prev = VecCopy(v)
+	return 0
 end
 
 -- impacts: a sudden loss of speed is a hit; holes by speed and material
@@ -1044,40 +1123,19 @@ function server.updateFlying(dt, s)
 		if not IsHandleValid(f.body) then
 			table.remove(server.flying, i)
 		else
-			server.flightCheck(f)
+			-- a body out of the simulation (asleep: in-game it hangs in mid-air) has stalled, it did not hit
+			-- anything: flightCheck carries it on and finds a real obstacle on the arc itself
+			local stalled = not IsBodyActive(f.body)
+			holes = holes + server.flightCheck(f, s, HOLES_PER_UPDATE - holes)
 			local v = GetBodyVelocity(f.body)
 			local sp = VecLength(f.prev)
 			local dv = VecLength(VecSub(v, f.prev))
-			if f.t > 0.12 and sp > 12 and dv > 0.45 * sp and holes < HOLES_PER_UPDATE then
+			if f.t > 0.12 and sp > 12 and dv > 0.45 * sp and (not stalled or f.n > 0) and holes < HOLES_PER_UPDATE then
 				local pos = TransformToParentPoint(GetBodyTransform(f.body), GetBodyCenterOfMass(f.body))
-				local dir = VecScale(f.prev, 1 / sp)
-				local k = AMMO_K[f.kind] or AMMO_K.other
-				local e = sp * s.damage
-				local r0 = clamp(0.065 * e * k, 0.6, 5)
-				local r1 = (e >= 25) and r0 * 0.75 or r0 * 0.3
-				local r2 = (e >= 45) and r0 * 0.35 or 0
-				MakeHole(VecAdd(pos, VecScale(dir, 0.4)), r0, r1, r2)
-				holes = holes + 1
-				if f.kind == "boulder" and f.n == 0 then
-					-- a boulder punches on through
-					for d = 1, 2 do
-						if holes < HOLES_PER_UPDATE then
-							MakeHole(VecAdd(pos, VecScale(dir, 1.5 * d)), r0 * (1 - 0.2 * d), r1 * (1 - 0.2 * d), r2 * (1 - 0.2 * d))
-							holes = holes + 1
-						end
-					end
-				end
-				if f.kind == "barrel" and f.n == 0 and VecLength(VecSub(pos, f.from)) > 12 then
-					Explosion(pos, 2.5)
-				end
-				f.n = f.n + 1
-				server.impacts[#server.impacts + 1] = { speed = sp, pos = pos, kind = f.kind }
-				local cp = shared.cp
-				cp.impN = cp.impN + 1
-				cp.ix, cp.iy, cp.iz, cp.isp = pos[1], pos[2], pos[3], sp
+				holes = holes + server.impact(f, pos, sp, VecScale(f.prev, 1 / sp), s, HOLES_PER_UPDATE - holes)
 			end
 			f.prev = v
-			if f.n >= 3 or (VecLength(v) < 4 and f.t > 1) or f.t > 20 then table.remove(server.flying, i) end
+			if f.n >= 3 or (not stalled and VecLength(v) < 4 and f.t > 1) or f.t > 20 then table.remove(server.flying, i) end
 		end
 	end
 	server.sync()

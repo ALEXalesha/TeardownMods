@@ -50,6 +50,16 @@ H.P(1).pitch = 0
 T.press("q"); T.frames(1)
 T.runUntil(function() return c.state == "reset" end, 120)
 T.check(c.lastLaunch and c.lastLaunch.held >= 1, "Q throws the copy")
+do -- and it really leaves the bucket (in-game 17.10: "the chosen object is not thrown, it sticks in the catapult")
+	T.frames(60)
+	local b = copy
+	local rep = srv().replaced or {}
+	while rep[b] do b = rep[b] end
+	local bb = H.bodies[b]
+	local floor = srv().bucketFloor(c)
+	local d = bb and math.sqrt((bb.pos[1] - floor[1]) ^ 2 + (bb.pos[3] - floor[3]) ^ 2) or 0
+	T.check(d > 15, string.format("the thrown copy is %.0f m away from the bucket 1 s later", d))
+end
 T.runUntil(function() return c.state == "ready" end, 600)
 T.frames(3)
 local g2 = c.groups and c.groups[1]

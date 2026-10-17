@@ -621,6 +621,7 @@ function server.respawnAwake(b, t)
 	end
 	-- not one of the mod's own loads (the game's car, anything else in the bucket): move it, wake it
 	SetBodyTransform(b, t)
+	if not IsBodyDynamic(b) then SetBodyDynamic(b, true) end
 	SetBodyActive(b, true)
 	return b, GetBodyShapes(b)
 end
@@ -670,7 +671,8 @@ function server.copyBody(shapes, t)
 	end
 	if not nb then deleteSpawned(ents) return nil end
 	-- every shape keeps its place relative to the first shape's body (a car's wheels around its hull)
-	local baseT = GetBodyTransform(GetShapeBody(shapes[1]))
+	local b0 = GetShapeBody(shapes[1])
+	local baseT = (b0 ~= 0 and IsBodyDynamic(b0)) and GetBodyTransform(b0) or GetShapeWorldTransform(shapes[1])
 	local n = 0
 	for _, sh in ipairs(shapes) do
 		local wt = GetShapeWorldTransform(sh)
@@ -680,6 +682,8 @@ function server.copyBody(shapes, t)
 	end
 	if seed and IsHandleValid(seed) then Delete(seed) end
 	if n == 0 then Delete(nb) return nil end
+	SetBodyDynamic(nb, true)
+	SetBodyActive(nb, true)
 	return nb
 end
 
@@ -846,7 +850,9 @@ function server.fire(c, riders)
 	local seen = {}
 	for _, b in ipairs(bodies) do seen[b] = true end
 	for _, g in ipairs(c.groups or {}) do
-		for _, b in ipairs(g.bodies) do if IsHandleValid(b) and not seen[b] and VecLength(VecSub(GetBodyTransform(b).pos, server.bucketFloor(c))) < 4 then bodies[#bodies + 1] = b seen[b] = true end end
+		-- (a copy made by T always goes, wherever its origin lies: in-game 17.10 "the chosen object is not thrown,
+		-- it just sticks in the catapult")
+		for _, b in ipairs(g.bodies) do if IsHandleValid(b) and not seen[b] and (c.loaded == "copy" or VecLength(VecSub(GetBodyTransform(b).pos, server.bucketFloor(c))) < 4) then bodies[#bodies + 1] = b seen[b] = true end end
 	end
 	local armT = GetBodyTransform(c.arm)
 	c.held = {}

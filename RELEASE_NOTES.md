@@ -4,6 +4,10 @@
 
 ## English
 
+### 2026-10-17 - replay mod: one third-person camera that stays out of walls; catapult loads fly
+
+- **Catapult**: every load flies along the aiming arc and the car no longer vanishes after a shot (the load is woken up before the throw, the car counts as one load, the load is released exactly at the release angle with the planned speed).
+
 ### 2026-10-16 (night) - catapult appears again, drone keeps reacting, replay camera stays above the ground
 
 - **Catapult**: it did not appear at all ("refused: missing frame among 2 bodies / 7 shapes"). The game created every part, but the mod recognised the parts by the size of their model files, and the game counts only the filled voxels: the frame's model has empty outer columns, so its size did not match. Now every part carries its own tag and is recognised by it (the size and the frame body are fallbacks).
@@ -50,6 +54,10 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 17.10.2026 - мод повтора: одна камера от третьего лица, не заходит в стены; снаряды катапульты летят
+
+- **Катапульта**: каждый снаряд летит по дуге прицела, машина после выстрела больше не пропадает (снаряд будится перед броском, машина считается одним зарядом, выпуск ровно на угле выпуска с расчётной скоростью).
 
 ### 16.10.2026 (ночь) - катапульта снова ставится, дрон не перестаёт слушаться, камера повтора не уходит в землю
 

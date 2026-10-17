@@ -89,7 +89,6 @@ KEYMAP = {
         K("replay", ["p"], "pause / play", "пауза / воспроизведение"),
         K("replay", ["leftarrow", "rightarrow"], "scrub back / forward", "перемотка назад / вперёд"),
         K("replay", ["uparrow", "downarrow"], "speed", "скорость"),
-        K("replay", ["v"], "camera", "камера"),
         K("replay", ["r"], "restart", "с начала"),
     ],
     "mover": [

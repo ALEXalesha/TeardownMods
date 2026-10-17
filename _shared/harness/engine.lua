@@ -444,12 +444,21 @@ A.QueryAabbShapes = function(min, max)
 	for h, b in pairs(H.bodies) do
 		if h ~= H.worldBody and bodyPasses(b) then
 			local bmin, bmax = bodyAabb(b)
-			if aabbOverlap(min, max, bmin, bmax) then for _, s in ipairs(b.shapes) do if not q.rejectShapes[s] then out[#out + 1] = s end end end
+			if aabbOverlap(min, max, bmin, bmax) then for _, s in ipairs(b.shapes) do if H.shapes[s].valid and not q.rejectShapes[s] then out[#out + 1] = s end end end
 		end
 	end
 	if not q.require.dynamic then
 		for _, bx in ipairs(H.boxes) do
 			if H.shapes[bx.shape].valid and aabbOverlap(min, max, bx.min, bx.max) and not q.rejectShapes[bx.shape] then out[#out + 1] = bx.shape end
+		end
+		-- shapes a script created on the world body (CreateShape(GetWorldBody(), ...)) are found too, by their
+		-- voxel bounds: the game returns every shape in the box, so a mod must filter out its own
+		for _, sh in ipairs(H.bodies[H.worldBody].shapes) do
+			local s = H.shapes[sh]
+			if s.valid and s.size and not s.box and not q.rejectShapes[sh] then
+				local bmin, bmax = H.shapeWorldAabb(s)
+				if aabbOverlap(min, max, bmin, bmax) then out[#out + 1] = sh end
+			end
 		end
 	end
 	table.sort(out)
@@ -1852,12 +1861,36 @@ A.ResizeShape = function(h, x0, y0, z0, x1, y1, z1)
 	s.size = { nx, ny, nz }
 	return true, V(x0, y0, z0)
 end
+-- voxel content: a string that names what the voxels are (H.contentOf), so a law can tell an intact wall
+-- from a broken one and a copy from its source. CopyShapeContent copies it (and the size and count),
+-- ClearShape empties it, H.breakShape (the destruction model below) changes it.
+function H.contentOf(h)
+	local s = H.shapes[h]
+	if not s then return "" end
+	return s.content or ("orig" .. h)
+end
 A.CopyShapeContent = function(src, dst)
 	local a, b = H.shapes[src], H.shapes[dst]
 	if not a or not b then H.err("CopyShapeContent invalid shapes") return end
 	local sz = shapeSize(a)
 	b.size = { sz[1], sz[2], sz[3] }
 	b.voxels = A.GetShapeVoxelCount(src)
+	b.content = H.contentOf(src)
+end
+-- destruction model: n voxels of a shape are broken out (an explosion, a hit) and fly off as a new dynamic
+-- body (debris) at pos with velocity vel; the shape keeps the rest, its content changes. The game does the
+-- same: the shape loses voxels in place, the broken-off part is a new body with a new, higher handle.
+-- n = all voxels: the shape is gone (its handle no longer valid).
+function H.breakShape(h, n, pos, vel)
+	local s = H.shapes[h]
+	if not s or not s.valid then H.err("breakShape: invalid shape " .. tostring(h)) return 0 end
+	local left = A.GetShapeVoxelCount(h) - n
+	s.content = H.contentOf(h) .. "|hit" .. H.frame
+	s.broken = true
+	s.voxels = math.max(0, left)
+	if left <= 0 then s.valid = false end
+	if pos then return H.addBody { pos = pos, vel = vel or V(), mass = 2 } end
+	return 0
 end
 A.CopyShapePalette = function() end
 A.GetShapePalette = function() return { 1, 2, 3 } end
@@ -1881,7 +1914,7 @@ end
 A.DrawShapeLine = function() end
 A.ExtrudeShape = function() end
 A.TrimShape = function() return V() end
-A.ClearShape = function(h) local s = H.shapes[h]; if s then s.voxels = 0 end end
+A.ClearShape = function(h) local s = H.shapes[h]; if s then s.voxels = 0; s.content = "empty" end end
 A.SplitShape = function() return {} end
 A.MergeShape = function(h) return h end
 A.GetShapeMaterialAtIndex = function(h, x, y, z)

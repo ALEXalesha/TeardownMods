@@ -4,6 +4,9 @@
 
 ## English
 
+### 2026-10-17 (evening) - replay mod replays the destruction
+
+
 ### 2026-10-17 (afternoon) - catapult: every load flies, RMB launches you; replay mod replays you too
 
 - **Catapult**: "the car finally fires properly, but the other loads just stay hanging in the air". The boulder, the barrel and the crates lie still in the bucket and the game takes them out of the simulation; in the game nothing brought them back (not even waking them up by script), so they were moved to the release point and hung there. The car, a vehicle, stayed in the simulation and flew. Now the mod throws a fresh copy of its load at the release (a just-created object is always simulated, the way the game itself throws things), carries the load with the bucket during the swing by moving it, and if a thrown load still does not move it is put on its arc again (up to 3 times).
@@ -59,6 +62,9 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 17.10.2026 (вечер) - мод повтора повторяет разрушения
+
 
 ### 17.10.2026 (день) - катапульта: летят все снаряды, ПКМ запускает вас; мод повтора повторяет и вас
 

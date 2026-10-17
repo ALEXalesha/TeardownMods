@@ -4,6 +4,9 @@
 У каждого мода своя папка: собранный мод в `mod/`, генераторы в `tools/`, офлайн-тесты в `tests/`
 и свой README на английском и русском. English: [README.md](README.md).
 
+[![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+Код, тесты и документация этого проекта написаны Claude (Anthropic) в Claude Code. Идеи, проверка и решения - Алексей.
+
 <!-- mods -->
 | Папка | Мод | Что это |
 |---|---|---|

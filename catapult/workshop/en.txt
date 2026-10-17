@@ -35,6 +35,8 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [*]The throw speed is set by the mod at the release (so power and range are exact); the arm's swing itself is turned by the script about the axle
 [*]A car is the game's own small car if its prefab can be spawned, otherwise the mod's car body
 [*]At most 24 mod-spawned ammo pieces exist at once; the oldest disappear
+[*]T copies objects up to 8 m and 60 000 voxels; of a fixed part of the level only the shape you aim at is copied
+[*]While a catapult is within 40 m and the tool is in hand, the wheel and 1-4 belong to the catapult: press R or walk 40 m away to switch tools again
 [/list]
 
 Own voxel models and synthesized sounds. For Teardown 2.x (#version 2 scripts).

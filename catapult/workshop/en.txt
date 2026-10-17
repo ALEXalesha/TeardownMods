@@ -13,11 +13,12 @@ A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its f
 [h2]Controls[/h2]
 [list]
 [*][b]LMB[/b] - place a catapult in front of you
-[*][b]Q, or E on the machine[/b] - fire
+[*][b]Q[/b] - fire
 [*][b]Mouse wheel[/b] - power
 [*][b]Z / X[/b] - turn left / right
 [*][b]V / B[/b] - lower / raise the angle
 [*][b]1 2 3 4[/b] - load a boulder / barrel / car / crates
+[*][b]T[/b] - copy what you aim at (a car, a pole...) into the bucket
 [*][b]RMB[/b] - get into the bucket and be launched
 [*][b]R[/b] - remove all catapults
 [/list]

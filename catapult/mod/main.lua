@@ -5,7 +5,7 @@
 -- boulder, an explosive barrel, a car, a pile of crates, the player.
 --
 --   LMB             place a catapult in front of you (up to 4)
---   Q, or E on it   fire           (F is the game's flashlight)
+--   Q               fire           (F is the game's flashlight)
 --   mouse wheel     power
 --   Z / X           turn left / right          V / B   lower / raise the angle   (C is the game's camera key)
 --   1 2 3 4         load a boulder / barrel / car / crates      RMB  ride: get into the bucket and be launched
@@ -52,7 +52,9 @@ local SCALE = 3
 local VS = 0.1 * SCALE           -- voxel size (m)
 local TOL = 0.05                 -- a part more than 5 cm from its designed place counts as misplaced
 local MAX_SPAWNS = 6             -- measuring and real spawns per placement
-local AMMO = { "boulder", "barrel", "car", "crates" }
+local AMMO = { "boulder", "barrel", "car", "crates", "copy" }   -- 5: a copy of what the player aimed at (T)
+local COPY_MAX_SIZE = 8          -- m, the largest side of an object that can be copied into the bucket
+local COPY_MAX_VOXELS = 60000
 local AMMO_K = { boulder = 1.0, barrel = 0.7, car = 0.85, crates = 0.5, other = 0.7 }
 -- collision layers: the arm's shapes do not collide with the frame's (the hub sits around the axle);
 -- a load that has just been released does not collide with either while it leaves the bucket
@@ -79,7 +81,9 @@ function readSettings()
 		damage = clamp(getF("damage", 1), 0.25, 2),
 		falldamage = getB("falldamage", false),
 		arc = getB("arc", true),
-		debug = getB("debugline", false),   -- hidden diagnostics, off by default since 10.10 (new key: old saves may hold debug=true)
+		-- hidden diagnostics, off by default; a new key again on 17.10 (Alexey: "hide the debug lines by default" -
+		-- he had turned them on for a check; old saves may hold debugline=true or debug=true)
+		debug = getB("debugline3", false),
 	}
 end
 
@@ -136,8 +140,8 @@ local function prefab(fix, still)
 		if ARM_PARTS[n] then p = VecSub(p, P) end
 		return "<vox file='MOD/vox/" .. n .. ".vox' scale='" .. SCALE .. "' pos='" .. fmt3(p) .. "' rot='" .. lay[n].tilt .. " 0 0' tags='" .. tag .. " " .. partTag(n) .. "'/>"
 	end
-	local frameTags = still and "catapult_part catapult_measure" or "catapult catapult_part interact=Fire"
-	local armTags = still and "catapult_part catapult_measure" or "catapult_arm catapult_part interact=Fire"
+	local frameTags = still and "catapult_part catapult_measure" or "catapult catapult_part"
+	local armTags = still and "catapult_part catapult_measure" or "catapult_arm catapult_part"
 	return prefabXml("catapult", "<body dynamic='false' tags='" .. frameTags .. "'>" .. vox("frame") .. vox("axle") .. "</body>" ..
 		"<body dynamic='" .. (still and "false" or "true") .. "' pos='" .. fmt3(P) .. "' tags='" .. armTags .. "'>" ..
 		vox("hub") .. vox("beam_long") .. vox("beam_short") .. vox("bucket") .. vox("weight") .. "</body>")
@@ -305,16 +309,7 @@ end
 function server.tick(dt)
 	for p in PlayersAdded() do SetToolEnabled(TOOL, true, p) end
 	for p in Players() do
-		-- E on a catapult fires it, with any tool in hand
-		if InputPressed("interact", p) then
-			local ib = GetPlayerInteractBody(p)
-			if ib ~= 0 then
-				for i = 1, #server.cats do
-					local c = server.cats[i]
-					if ib == c.frame or ib == c.arm then server.fire(c) end
-				end
-			end
-		end
+		-- no E (the game's interact) on the machine: in-game 17.10 "the shot on E does not work, remove it"
 		if GetPlayerTool(p) == TOOL and GetPlayerCanUseTool(p) and GetPlayerVehicle(p) == 0 then
 			if InputPressed("usetool", p) then server.place(p) end
 			if InputPressed("grab", p) and GetPlayerGrabBody(p) == 0 then
@@ -630,6 +625,74 @@ function server.respawnAwake(b, t)
 	return b, GetBodyShapes(b)
 end
 
+-- T with the tool in hand (G is Gravity Change's): whatever the player aims at (a car, a pole, a lamp, a sofa) is copied into the
+-- bucket, voxel for voxel, and thrown like any other load; the next loads are copies of it again until an
+-- ammo key is pressed (in-game 17.10: "choose an object by some key and it appears in the catapult, a car or a
+-- pole, duplicated there"). The original stays where it is. A loose object is copied whole (every shape of
+-- its body); a part of the level (a pole, a sign) only the shape that was hit. Too big - refused.
+function server.aimedShapes(p)
+	local ct = GetPlayerCameraTransform(p)
+	local dir = TransformToParentVec(ct, Vec(0, 0, -1))
+	for _, c in ipairs(server.cats) do QueryRejectBody(c.frame) QueryRejectBody(c.arm) end
+	local hit, dist, _, shape = QueryRaycast(ct.pos, dir, 80)
+	if not hit or not shape or shape == 0 or not IsHandleValid(shape) then return nil, "copy_none" end
+	local body = GetShapeBody(shape)
+	local shapes = { shape }
+	if body ~= 0 and IsBodyDynamic(body) then shapes = GetBodyShapes(body) end
+	-- a whole vehicle: its wheels are bodies of their own
+	local veh = (body ~= 0) and GetBodyVehicle(body) or 0
+	if veh ~= 0 then
+		shapes = {}
+		for _, vb in ipairs(GetVehicleBodies(veh)) do for _, sh in ipairs(GetBodyShapes(vb)) do shapes[#shapes + 1] = sh end end
+	end
+	local mn, mx, vox = nil, nil, 0
+	for _, sh in ipairs(shapes) do
+		local a, b = GetShapeBounds(sh)
+		mn = mn and Vec(math.min(mn[1], a[1]), math.min(mn[2], a[2]), math.min(mn[3], a[3])) or a
+		mx = mx and Vec(math.max(mx[1], b[1]), math.max(mx[2], b[2]), math.max(mx[3], b[3])) or b
+		vox = vox + GetShapeVoxelCount(sh)
+	end
+	local size = math.max(mx[1] - mn[1], mx[2] - mn[2], mx[3] - mn[3])
+	if size > COPY_MAX_SIZE or vox > COPY_MAX_VOXELS then return nil, "copy_big" end
+	if vox == 0 then return nil, "copy_none" end
+	return shapes, nil, size
+end
+
+-- a new dynamic body at t holding a copy of every shape (their places relative to the first shape's body)
+function server.copyBody(shapes, t)
+	if not shapes or #shapes == 0 then return nil end
+	for _, sh in ipairs(shapes) do if not IsHandleValid(sh) then return nil end end
+	local ents = Spawn("<body dynamic='true' tags='catapult_ammo'><voxbox size='1 1 1' material='wood' tags='catapult_copy_seed'/></body>", t)
+	local nb, seed = nil, nil
+	for i = 1, #(ents or {}) do
+		local ty = GetEntityType(ents[i])
+		if ty == "body" and not nb then nb = ents[i] elseif ty == "shape" then seed = ents[i] end
+	end
+	if not nb then deleteSpawned(ents) return nil end
+	-- every shape keeps its place relative to the first shape's body (a car's wheels around its hull)
+	local baseT = GetBodyTransform(GetShapeBody(shapes[1]))
+	local n = 0
+	for _, sh in ipairs(shapes) do
+		local wt = GetShapeWorldTransform(sh)
+		local lt = TransformToLocalTransform(baseT, wt)
+		local ns = CreateShape(nb, lt, sh)
+		if ns and ns ~= 0 then CopyShapeContent(sh, ns) CopyShapePalette(sh, ns) SetTag(ns, "catapult_ammo") n = n + 1 end
+	end
+	if seed and IsHandleValid(seed) then Delete(seed) end
+	if n == 0 then Delete(nb) return nil end
+	return nb
+end
+
+function server.copy(c, p)
+	if c.broken or c.state ~= "ready" then return end
+	local shapes, why, size = server.aimedShapes(p)
+	if not shapes then message(why) return end
+	c.copyFrom = shapes
+	c.copyBig = size > 2.6          -- wider than the bucket: it lies on the rim, like the car
+	c.ammo = 5
+	server.load(c, 5)
+end
+
 -- where each load group's bottom centre goes, relative to the bucket floor centre (catapult axes)
 local CRATE_SLOTS = { { -0.5, 0, -0.5 }, { 0.5, 0, -0.5 }, { -0.5, 0, 0.5 }, { 0.5, 0, 0.5 }, { 0, 0.93, -0.5 }, { 0, 0.93, 0.5 } }
 
@@ -674,6 +737,12 @@ function server.load(c, kind)
 			xmls[i] = AMMO_XML.crate
 		end
 		ents = Spawn(prefabXml("catapult_crates", xml), Transform(floor, rot))
+	elseif name == "copy" then
+		trimAmmo(1, name)
+		local b = server.copyBody(c.copyFrom, Transform(VecAdd(floor, Vec(0, 1.5, 0)), rot))
+		if not b then c.ammo = 1 c.copyFrom = nil return server.load(c, 1) end
+		ents = { b }
+		groups[1] = { slot = Vec(0, 0, 0), rim = c.copyBig }
 	elseif name == "car" then
 		trimAmmo(5, name)
 		-- the game's own small car if its prefab can be spawned, else the mod's car body; it is wider than
@@ -1078,15 +1147,23 @@ end
 -- debug line counts the loads that needed it ("stuck"). Returns the holes made.
 function server.flightCheck(f, s, budget)
 	if not f.p0 or f.moving or f.n > 0 then return 0 end
-	local ref, tr = f.setPos or f.p0, f.setT or 0
-	local dt = f.t - tr
-	if dt < 0.05 then return 0 end
 	local cur = GetBodyTransform(f.body).pos
-	local _, vref = arcAt(f, tr)
-	-- flying by itself for now: checked again from here (a body can fall asleep in mid-air later on)
-	if VecLength(VecSub(cur, ref)) >= 0.3 * VecLength(vref) * dt then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
-	-- in the simulation and stopped: something stopped it (the hit is found by its loss of speed)
-	if IsBodyActive(f.body) then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+	if f.guided then
+		-- carried: moved every update (in-game 17.10, carried every 0.05 s, the load "fades smoothly, then gets
+		-- its full colour at once, again and again" - the picture smeared between the jumps); woken up - it flies
+		-- by itself again
+		if IsBodyActive(f.body) then f.guided = false f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+	else
+		local ref, tr = f.setPos or f.p0, f.setT or 0
+		local dt = f.t - tr
+		if dt < 0.05 then return 0 end
+		local _, vref = arcAt(f, tr)
+		-- flying by itself for now: checked again from here (a body can fall asleep in mid-air later on)
+		if VecLength(VecSub(cur, ref)) >= 0.3 * VecLength(vref) * dt then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+		-- in the simulation and stopped: something stopped it (the hit is found by its loss of speed)
+		if IsBodyActive(f.body) then f.setPos, f.setT = VecCopy(cur), f.t return 0 end
+		f.guided = true
+	end
 	if f.t > 20 then f.moving = true return 0 end
 	local want, v = arcAt(f, f.t)
 	local d = VecSub(want, cur)
@@ -1183,7 +1260,7 @@ function server.debugInfo(c)
 	local placed = 0
 	for _, g in ipairs(c.groups or {}) do if g.placed then placed = placed + 1 end end
 	local l1 = string.format("catapult: %s | parts off m:%s | spawns %d", c.state, parts, c.spawns or 0)
-	local l2 = string.format("%s | arm angle %+.0f (rest %+.0f) | %s | respawned awake %d, stuck %d, rides %d | fire: Q or E",
+	local l2 = string.format("%s | arm angle %+.0f (rest %+.0f) | %s | respawned awake %d, stuck %d, rides %d | fire: Q",
 		hinge, server.psi(c), c.psiRest or -REST, c.lastShot or "no shot yet", server.respawns or 0, server.stuck or 0, c.rides or 0)
 	local l3 = string.format("load %d/%d in bucket | %s | placed %d/%d%s%s", n, m, c.loadDbg or "no load yet", placed, #(c.groups or {}),
 		c.loadMoved and string.format(", moved into place by %.2f m", c.loadMoved) or "",
@@ -1199,7 +1276,8 @@ function server.cmd(p, id, what, value)
 	if what == "fire" then server.fire(c)
 	elseif what == "power" then c.power = clamp(value, 0, 1)
 	elseif what == "angle" then c.angle = clamp(value, 20, 70)
-	elseif what == "ammo" then c.ammo = math.floor(clamp(value, 1, 4)) server.load(c, c.ammo)
+	elseif what == "ammo" then c.ammo = math.floor(clamp(value, 1, 4)) c.copyFrom = nil server.load(c, c.ammo)
+	elseif what == "copy" then server.copy(c, p)
 	elseif what == "turn" and c.state == "ready" then server.turn(c, value)
 	end
 	server.sync()
@@ -1269,13 +1347,15 @@ local MESSAGES = {
 	aim = { "No room here: aim at open ground", "Здесь не поставить: наведите на открытую землю" },
 	cleared = { "Catapults removed", "Катапульты убраны" },
 	loaded = { "The bucket is not empty", "Ковш уже занят" },
+	copy_none = { "Aim at an object to copy it into the bucket", "Наведи на предмет, чтобы скопировать его в ковш" },
+	copy_big = { "Too big to copy into the bucket (up to 8 m)", "Слишком большой для ковша (до 8 м)" },
 	placed = { "Catapult placed", "Катапульта поставлена" },
 	-- in-game 10.10 a failed assembly said "aim at open ground": the ground was fine
 	assembly = { "The catapult did not assemble (the game did not create all its parts) - removed, try again",
 		"Катапульта не собралась (игра создала не все её части) - убрана, попробуйте ещё раз" },
 }
 local MESSAGE_TIME = { assembly = 6 }
-local AMMO_NAMES = { { "Boulder", "Валун" }, { "Explosive barrel", "Бочка со взрывчаткой" }, { "Car", "Машина" }, { "Crates", "Ящики" } }
+local AMMO_NAMES = { { "Boulder", "Валун" }, { "Explosive barrel", "Бочка со взрывчаткой" }, { "Car", "Машина" }, { "Crates", "Ящики" }, { "Copy", "Копия" } }
 
 local function selectCat()
 	local pp = GetPlayerTransform().pos
@@ -1333,6 +1413,7 @@ function client.tick(dt)
 		if InputPressed("v") then ServerCall("server.cmd", me, c.id, "angle", c.angle - 5) end
 		if InputPressed("b") then ServerCall("server.cmd", me, c.id, "angle", c.angle + 5) end
 		for k = 1, 4 do if InputPressed(tostring(k)) then ServerCall("server.cmd", me, c.id, "ammo", k) end end
+		if InputPressed("t") then ServerCall("server.cmd", me, c.id, "copy", 0) end
 		local turn = (InputDown("z") and 1 or 0) - (InputDown("x") and 1 or 0)
 		client.turnAcc = client.turnAcc + turn * 30 * dt
 		client.turnT = client.turnT + dt
@@ -1487,8 +1568,13 @@ function client.draw(dt)
 			UiTranslate(0, 26)
 			UiFont("regular.ttf", 18)
 			UiColor(1, 1, 1, 0.8)
-			UiText(tr("Q or E: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   RMB: ride   R: remove all",
-				"Q или E: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   ПКМ: полететь самому   R: убрать все"))
+			UiText(tr("Q: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   T: copy what you aim at   RMB: ride   R: remove all",
+				"Q: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   T: копия предмета под прицелом   ПКМ: полететь самому   R: убрать все"))
+			-- in-game 17.10: say plainly how to get the wheel and 1-9 back for the other tools
+			UiTranslate(0, 24)
+			UiColor(1, 0.85, 0.5, 0.9)
+			UiText(tr("Other tools: press R (removes the catapults) or walk 40 m away - then the wheel and 1-9 switch tools again",
+				"Другие инструменты: нажми R (уберёт катапульты) или отойди на 40 м - тогда колесо и 1-9 снова переключают инструменты"))
 		else
 			UiText(tr("LMB: place a catapult in front of you   R: remove all", "ЛКМ: поставить катапульту перед собой   R: убрать все"))
 		end

@@ -10,7 +10,7 @@ Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, te
 <!-- mods -->
 | Folder | Mod | What it is |
 |---|---|---|
-| [catapult](catapult) | Catapult | A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings about the axle. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you. Controls: LMB - place a catapult in front of you; Q, or E on the machine - fire; Mouse wheel - power; Z / X - turn left / right; V / B - lower / raise the angle; 1 2 3 4 - load a boulder / barrel / car / crates; RMB - get into the bucket and be launched; R - remove all catapults. Settings in the Mod Manager (Options). |
+| [catapult](catapult) | Catapult | A giant wooden trebuchet, about 13 m tall, that you place in front of you. Its frame is real destructible wood and its arm swings about the axle. Whatever lies in the bucket gets thrown: a boulder, an explosive barrel, a car, a pile of crates - or you. Controls: LMB - place a catapult in front of you; Q - fire; Mouse wheel - power; Z / X - turn left / right; V / B - lower / raise the angle; 1 2 3 4 - load a boulder / barrel / car / crates; RMB - get into the bucket and be launched; R - remove all catapults. Settings in the Mod Manager (Options). |
 | [cutter](cutter) | Cutter | An angle grinder. Hold the mouse button on a surface, sweep to the end point and release: the saw cuts a straight kerf from one point to the other, through walls, floors and vehicles. Controls: Hold LMB, sweep, release - cut a straight line from the press point to the release point. Settings in the Mod Manager (Options). |
 | [drone](drone) | Camera Drone | A deployable quadcopter flown from its own camera while your body stays behind. Battery, signal range with static, a target marker and bombs - or Singularity Grenades if that mod is on. Controls: LMB (on foot) - launch the drone / take control again; R (on foot, within 4 m) - pack it up (refills bombs and battery); WASD - fly; Space / Ctrl - up / down; Mouse - look and turn; LMB (flying) - drop a bomb; Q - back to your body (the drone keeps hovering); P - photo mode. Settings in the Mod Manager (Options). |
 | [earthquake](earthquake) | Earthquake | A seismic detonator. Start an earthquake at the aim point, from Weak to Catastrophic: things rock and tip over, buildings crack and fall, joints snap, aftershocks follow. Controls: LMB - start a quake at the aim point / stop it; RMB - next preset. Settings in the Mod Manager (Options). |
@@ -38,7 +38,7 @@ Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, te
 | Catapult | Z / X | with the tool in hand | turn |
 | Catapult | V / B | with the tool in hand | angle |
 | Catapult | 1 / 2 / 3 / 4 | with the tool in hand | load |
-| Catapult | E | aiming at the machine, any tool | fire (the game's interact) |
+| Catapult | T | with the tool in hand | copy what you aim at into the bucket |
 | Camera Drone | R | with the tool in hand | pick the drone up (on foot, within 4 m) |
 | Camera Drone | Q | flying the drone | back to your body (the drone keeps hovering) |
 | Camera Drone | P | flying the drone | photo mode |
@@ -60,7 +60,7 @@ Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, te
 
 Mouse only (LMB / RMB): Cutter, Earthquake, Falling Moon, Singularity Grenade, Telekinesis, Tornado, Tsunami.
 
-Game keys the mods never use for their own actions: W, A, S, D, Space, Ctrl, Shift, E, F, C, Tab, Esc, F4, F5, F6, F7, F8, F9; in the creative mode also Q, Z, M, Alt, Delete, 1-3. E on the catapult is the game's own interact action, aimed at the machine.
+Game keys the mods never use for their own actions: W, A, S, D, Space, Ctrl, Shift, E, F, C, Tab, Esc, F4, F5, F6, F7, F8, F9; in the creative mode also Q, Z, M, Alt, Delete, 1-3.
 "Always" keys are not used anywhere else: not by another mod and not among the choices in the options. Keys "with the tool in hand", "in the replay", "flying the drone" and "driving a car" may repeat between mods: only one tool is in the hands, the replay puts the tool away, the drone flight and the remote driving end when the drone or the remote is put away. Checked by the law `_shared/tdlib/keymap.py`.
 <!-- /keys -->
 

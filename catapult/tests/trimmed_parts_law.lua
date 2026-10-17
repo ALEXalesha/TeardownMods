@@ -17,7 +17,7 @@ local A = H.API
 H.spawnModel = { pivot = "field", physics = true, contentBounds = true, trimEmpty = true, boundsDelay = 1, shapesDelay = 1, dynamicDelay = 1, jointsAttach = false, com = true }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
-H.reg["savegame.mod.debugline"] = true
+H.reg["savegame.mod.debugline3"] = true
 T.load("main.lua", "main")
 T.init("main")
 T.frames(2)

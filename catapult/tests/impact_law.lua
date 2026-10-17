@@ -114,11 +114,11 @@ T.check(c1.lastLaunch and c1.lastLaunch.held >= 1, "the car is thrown")
 T.runUntil(function() return c1.state == "ready" end, 600)
 T.frames(3)
 
--- E on the machine fires it, with any tool
+-- E (the game's interact) on the machine does nothing: in-game 17.10 "the shot on E does not work, remove it"
 H.P(1).interactBody = c1.arm
 local fire0 = sh().cp.fireN
 T.press("interact"); T.frames(2)
-T.check(sh().cp.fireN == fire0 + 1, "E on the catapult fires it")
+T.check(sh().cp.fireN == fire0, "E on the catapult does not fire it (only Q does)")
 H.P(1).interactBody = nil
 T.runUntil(function() return c1.state == "ready" end, 600)
 T.frames(3)

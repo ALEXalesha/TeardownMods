@@ -22,7 +22,7 @@ local A = H.API
 H.spawnModel = { pivot = "field", physics = true, contentBounds = true, boundsDelay = 1, shapesDelay = 1, dynamicDelay = 1, jointsAttach = false, com = true }
 H.addPlayer(1, V(0, 0, 0))
 H.P(1).pitch = 0
-H.reg["savegame.mod.debugline"] = true
+H.reg["savegame.mod.debugline3"] = true
 T.load("main.lua", "main")
 T.init("main")
 T.frames(2)
@@ -165,7 +165,7 @@ T.check(line:find("load 6/6 in bucket", 1, true) ~= nil, "debug line: load 6/6 i
 local fire0 = T.sharedOf().cp.fireN
 T.press("f"); T.frames(10)
 T.check(c.state == "ready" and T.sharedOf().cp.fireN == fire0, "F (the game's flashlight) does not fire")
-T.check(T.hasText("Q or E: fire"), "the hint names Q as the fire key")
+T.check(T.hasText("Q: fire"), "the hint names Q as the fire key")
 local crates = {}
 for _, b in ipairs(srv().contents(c)) do crates[#crates + 1] = b end
 local psi0 = srv().psi(c)

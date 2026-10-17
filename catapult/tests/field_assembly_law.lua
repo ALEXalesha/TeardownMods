@@ -86,6 +86,6 @@ T.check(T.hasText("не собралась"), "the failure message in Russian")
 H.reg["options.language"] = 0
 
 -- the debug line is still there for testing, behind the option
-H.reg["savegame.mod.debugline"] = true
+H.reg["savegame.mod.debugline3"] = true
 T.frames(2)
 T.check(T.hasText("catapult:"), "the debug line shows when switched on in the options")

@@ -118,8 +118,7 @@ KEYMAP = {
         K("tool", ["z", "x"], "turn", "поворот"),
         K("tool", ["v", "b"], "angle", "угол"),
         K("tool", ["1", "2", "3", "4"], "load", "снаряд", code="loop"),
-        # the game's own "interact" action (E unless rebound) on the catapult itself, like a door
-        K("aim", ["e"], "fire (the game's interact)", "выстрел (действие игры «использовать»)", code="action"),
+        K("tool", ["t"], "copy what you aim at into the bucket", "копия предмета под прицелом в ковш"),
     ],
 }
 # mods with mouse buttons only (LMB / RMB through the game's usetool / grab)
@@ -293,16 +292,14 @@ def markdown(ru: bool) -> str:
     game = ", ".join(label(k, ru) for k in GAME_KEYS)
     if ru:
         tail = (f"\nТолько мышь (ЛКМ / ПКМ): {mouse}.\n\n"
-                f"Клавиши игры, которые моды не занимают своими действиями: {game}; в творческом режиме ещё Q, Z, M, Alt, Delete, 1-3. "
-                "E у катапульты - это само действие игры «использовать», наведя на машину.\n"
+                f"Клавиши игры, которые моды не занимают своими действиями: {game}; в творческом режиме ещё Q, Z, M, Alt, Delete, 1-3.\n"
                 "Клавиши «всегда» не повторяются нигде: ни в другом моде, ни среди вариантов в настройках. Клавиши "
                 "«с инструментом», «в повторе», «в полёте дрона» и «за рулём» могут совпадать у разных модов: в руках "
                 "один инструмент, повтор убирает инструмент из рук, полёт дрона и руль заканчиваются, если убрать "
                 "дрон или пульт. Проверяет закон `_shared/tdlib/keymap.py`.")
     else:
         tail = (f"\nMouse only (LMB / RMB): {mouse}.\n\n"
-                f"Game keys the mods never use for their own actions: {game}; in the creative mode also Q, Z, M, Alt, Delete, 1-3. "
-                "E on the catapult is the game's own interact action, aimed at the machine.\n"
+                f"Game keys the mods never use for their own actions: {game}; in the creative mode also Q, Z, M, Alt, Delete, 1-3.\n"
                 "\"Always\" keys are not used anywhere else: not by another mod and not among the choices in the "
                 "options. Keys \"with the tool in hand\", \"in the replay\", \"flying the drone\" and \"driving a car\" "
                 "may repeat between mods: only one tool is in the hands, the replay puts the tool away, the drone flight "

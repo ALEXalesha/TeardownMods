@@ -247,6 +247,8 @@ H.loops = {}
 H.playedSounds = {} -- list {path, pos, frame}
 H.playedLoops = {}  -- path -> frames played count
 H.particles = 0
+H.particleLog = {}  -- with H.logParticles: { frame, pos, life } of every particle
+H.lightLog = {}     -- with H.logParticles: { frame, pos, i } of every point light
 H.frameParticles = 0
 H.maxFrameParticles = 0
 H.gravity = V(0, -10, 0)
@@ -1147,6 +1149,8 @@ end
 A.Explosion = function(pos, size, inst)
 	if size < 0.5 or size > 4.0 then H.warn("Explosion size out of range 0.5-4: " .. size) end
 	table.insert(H.explosions, { pos = A.VecCopy(pos), size = size, frame = H.frame })
+	-- the game reports every explosion to the scripts as an "explosion" event (pos, strength), next frame
+	H.postEvent("explosion", A.VecCopy(pos), size)
 end
 A.SpawnFire = function() H.fires = H.fires + 1 end
 A.GetFireCount = function() return H.fires end
@@ -1169,10 +1173,15 @@ A.ParticleType = function(t) if t ~= "plain" and t ~= "smoke" and t ~= "fire" an
 A.SpawnParticle = function(pos, vel, life)
 	H.particles = H.particles + 1
 	H.frameParticles = H.frameParticles + 1
+	-- H.logParticles: where and when (a law can tell that an effect appeared at the right place and moment)
+	if H.logParticles then H.particleLog[#H.particleLog + 1] = { frame = H.frame, pos = A.VecCopy(pos), life = life } end
 end
 
 -- lights / camera / time
-A.PointLight = function(pos, r, g, b, i) H.lights[#H.lights + 1] = pos end
+A.PointLight = function(pos, r, g, b, i)
+	H.lights[#H.lights + 1] = pos
+	if H.logParticles then H.lightLog[#H.lightLog + 1] = { frame = H.frame, pos = A.VecCopy(pos), i = i or 1 } end
+end
 A.ShakeCamera = function(s) H.cameraShake = math.max(H.cameraShake, s) end
 A.GetCameraTransform = function()
 	if H.camera then return A.TransformCopy(H.camera) end
@@ -1249,7 +1258,7 @@ A.UnloadSound = function() end
 A.UnloadLoop = function() end
 A.PlaySound = function(h, pos, vol, reg, pitch)
 	if not H.sounds[h] then err("PlaySound with invalid handle " .. tostring(h)) return 0 end
-	table.insert(H.playedSounds, { path = H.sounds[h], frame = H.frame, vol = vol or 1, pitch = pitch or 1 })
+	table.insert(H.playedSounds, { path = H.sounds[h], frame = H.frame, vol = vol or 1, pitch = pitch or 1, pos = pos and A.VecCopy(pos) or nil })
 	return newHandle()
 end
 A.PlaySoundForUser = function(h) return A.PlaySound(h) end
@@ -1483,9 +1492,23 @@ A.IsRunningOnSteam = function() return true end
 A.Command = function() end
 A.Menu = function() H.note("Menu() called") end
 A.HasFile = function(p) local full = resolvePath(p); return H.fileExists(full) end
-A.GetEventCount = function() return 0 end
-A.PostEvent = function() end
-A.GetEvent = function() return nil end
+-- events: posted during a frame, read by the scripts in the next frame (H.events), then gone. The game's own
+-- "explosion" event (pos, strength) is posted by Explosion; a law can post one with H.postEvent.
+H.events, H.eventsNext = {}, {}
+function H.postEvent(typ, ...)
+	local l = H.eventsNext[typ]
+	if not l then l = {} H.eventsNext[typ] = l end
+	l[#l + 1] = { n = select("#", ...), ... }
+end
+function H.flipEvents() H.events, H.eventsNext = H.eventsNext, {} end
+A.GetEventCount = function(typ) local l = H.events[typ] return l and #l or 0 end
+A.PostEvent = function(name, ...) H.postEvent(name, ...) end
+A.GetEvent = function(typ, i)
+	local l = H.events[typ]
+	local e = l and l[i]
+	if not e then return nil end
+	return unpack(e, 1, e.n)
+end
 A.GetUserNickname = function() return "tester" end
 A.RegisterListenerTo = function() end
 A.UnregisterListener = function() end
@@ -1859,7 +1882,12 @@ A.ResizeShape = function(h, x0, y0, z0, x1, y1, z1)
 	local nx, ny, nz = x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1
 	if nx < 1 or ny < 1 or nz < 1 or nx > 256 or ny > 256 or nz > 256 then H.err("ResizeShape: bad size " .. nx .. "x" .. ny .. "x" .. nz) return false, V() end
 	s.size = { nx, ny, nz }
-	return true, V(x0, y0, z0)
+	if s.voxels then s.voxels = math.min(s.voxels, nx * ny * nz) end
+	-- like the game: the shape's local transform moves by the offset, so the kept voxels stay where they were
+	local vs = s.voxelSize or 0.1
+	local off = V(x0 * vs, y0 * vs, z0 * vs)
+	s.local_ = A.Transform(A.VecAdd(s.local_.pos, A.QuatRotateVec(s.local_.rot, off)), s.local_.rot)
+	return true, off
 end
 -- voxel content: a string that names what the voxels are (H.contentOf), so a law can tell an intact wall
 -- from a broken one and a copy from its source. CopyShapeContent copies it (and the size and count),

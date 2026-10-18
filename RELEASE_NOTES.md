@@ -4,6 +4,10 @@
 
 ## English
 
+### 2026-10-18 - replay mod: explosion effects and big explosions; catapult: Delete removes, R puts away
+
+- **Catapult**: R removed all catapults, and R was also the way back to the other tools. Now R puts the catapult away (back to the tool you had, the catapults stay) and Delete removes all catapults. The hint is two short lines.
+
 ### 2026-10-17 (evening) - replay mod replays the destruction
 
 
@@ -62,6 +66,10 @@
 - **Volcano**: the cone now stands where you click and smoke, lava and bombs come out of the cone. Each layer is spawned at its final place from a measured offset and checked by its world bounds; the eruption is anchored to the cone's real position. A debug line (on by default) shows the click point, the cone body, the cone's bounds centre and the distance between them.
 
 ## Русский
+
+### 2026-10-18 - мод повтора: эффекты взрывов и большие взрывы; катапульта: Delete удаляет, R убирает из рук
+
+- **Катапульта**: R удаляла все катапульты, и R же была способом вернуться к другим инструментам. Теперь R убирает катапульту из рук (возвращает прежний инструмент, катапульты остаются), а Delete удаляет все катапульты. Подсказка - две короткие строки.
 
 ### 17.10.2026 (вечер) - мод повтора повторяет разрушения
 

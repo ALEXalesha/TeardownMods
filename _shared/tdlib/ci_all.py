@@ -39,6 +39,27 @@ def main() -> int:
         print("  key law self-test missed:", ", ".join(kfails))
     if kfails or kprobs:
         failed.append("key law")
+    # options screens: every label narrower than its column in the game's font (review 17.10: the catapult's
+    # 471 px label ran into its button in a 330 px column); the self-test plants a label that is too long
+    import options_gen
+    import tempfile
+    oprobs = []
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "mod", "options.lua"))):
+        oprobs += options_gen.check_options(f)
+    with tempfile.TemporaryDirectory() as d:
+        bad = os.path.join(d, "probe", "mod", "options.lua")
+        os.makedirs(os.path.dirname(bad))
+        with open(bad, "w", encoding="utf-8") as fh:
+            fh.write('local LABEL_W = 330\n\t{ kind = "choice", key = "x", label = { "Fall damage for a launched player", '
+                     '"Урон от падения для запущенного игрока" } },\n')
+        missed = not options_gen.check_options(bad)
+    print("options labels:", "OK" if not (oprobs or missed) else "FAIL")
+    for p in oprobs:
+        print("  LABEL:", p)
+    if missed:
+        print("  options label law self-test missed a 471 px label in a 330 px column")
+    if oprobs or missed:
+        failed.append("options labels")
     mods = sorted(n for n in os.listdir(ROOT) if os.path.isfile(os.path.join(ROOT, n, "mod", "info.txt")))
     for m in mods:
         mod_dir = os.path.join(ROOT, m, "mod")

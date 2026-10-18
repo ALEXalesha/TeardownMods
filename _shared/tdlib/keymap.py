@@ -57,7 +57,8 @@ ACTIONS = {"usetool", "grab", "jump", "crouch", "up", "down", "left", "right", "
 
 LABEL = {"mmb": ("Middle mouse", "Средняя кнопка мыши"), "uparrow": ("Up", "Вверх"), "downarrow": ("Down", "Вниз"),
          "leftarrow": ("Left", "Влево"), "rightarrow": ("Right", "Вправо"), "space": ("Space", "Пробел"),
-         "ctrl": ("Ctrl", "Ctrl"), "shift": ("Shift", "Shift"), "tab": ("Tab", "Tab"), "esc": ("Esc", "Esc")}
+         "ctrl": ("Ctrl", "Ctrl"), "shift": ("Shift", "Shift"), "tab": ("Tab", "Tab"), "esc": ("Esc", "Esc"),
+         "delete": ("Delete", "Delete")}
 
 CTX = {
     "global": ("always", "всегда"),
@@ -113,7 +114,8 @@ KEYMAP = {
     "trampoline-floor": [K("tool", ["r"], "whole ground bounces on / off", "вся земля прыгает вкл / выкл")],
     "volcano": [K("tool", ["r"], "remove the cones", "убрать конусы")],
     "catapult": [
-        K("tool", ["r"], "remove all catapults", "убрать все катапульты"),
+        K("tool", ["r"], "put the catapult away (back to the tool you had)", "убрать катапульту из рук (вернуть прежний инструмент)"),
+        K("tool", ["delete"], "remove all catapults", "убрать все катапульты"),
         K("tool", ["q"], "fire", "выстрел"),
         K("tool", ["z", "x"], "turn", "поворот"),
         K("tool", ["v", "b"], "angle", "угол"),

@@ -9,7 +9,11 @@
 --   mouse wheel     power
 --   Z / X           turn left / right          V / B   lower / raise the angle   (C is the game's camera key)
 --   1 2 3 4         load a boulder / barrel / car / crates      RMB  ride: get into the bucket and be launched
---   R               remove all catapults and their ammo
+--   T               copy what you aim at into the bucket
+--   R               put the catapult away: back to the tool you had before (the catapults stay)
+--   Delete          remove all catapults and their ammo
+-- (18.10, Alexey: "removing them all should be on some other key": R removed every catapult, and R was also
+-- the way to get the wheel and 1-9 back for the other tools near your own catapult)
 --
 -- Assembly by measurement (in-game 16.10, after three rounds of guessing the game's vox pivot):
 -- where the game puts a spawned vox relative to its pos depends on the model's size, so no single
@@ -1274,6 +1278,12 @@ function server.debugInfo(c)
 	c.dbg = l1 .. "\n" .. l2 .. "\n" .. l3
 end
 
+-- R: the catapult goes out of the hands, the tool held before it comes back; nothing is removed
+function server.putAway(p, tool)
+	if type(tool) ~= "string" or tool == "" or tool == TOOL or tool == "none" then tool = "sledge" end
+	if GetPlayerTool(p) == TOOL then SetPlayerTool(tool, p) end
+end
+
 -- client commands
 function server.cmd(p, id, what, value)
 	local c = catById(id)
@@ -1305,7 +1315,7 @@ function server.turn(c, deg)
 	server.holdArm(c, 0)
 end
 
--- R: everything this mod ever spawned goes, found by tag (also pieces broken off, catapults that
+-- Delete: everything this mod ever spawned goes, found by tag (also pieces broken off, catapults that
 -- were never registered, and parts tagged by the first version: catapult / catapult_arm)
 function server.clear()
 	for _, tag in ipairs({ "catapult_part", "catapult_ammo", "catapult", "catapult_arm", "catapult_barrel", "catapult_measure" }) do
@@ -1403,11 +1413,20 @@ function client.tick(dt)
 	end
 
 	local me = GetLocalPlayer()
-	local holding = GetPlayerTool() == TOOL and GetPlayerCanUseTool()
+	local tool = GetPlayerTool()
+	-- the tool held before the catapult: R goes back to it
+	if tool ~= TOOL and tool ~= "" and tool ~= "none" then client.prevTool = tool end
+	local holding = tool == TOOL and GetPlayerCanUseTool()
 	client.sel = holding and selectCat() or nil
 	local c = client.sel
 	if holding then
-		if InputPressed("r") then ServerCall("server.cmd", me, 0, "clear", 0) end
+		-- Delete removes all catapults (the key law _shared/tdlib/keymap.py reads the literal key)
+		if InputPressed("delete") then ServerCall("server.cmd", me, 0, "clear", 0) end
+		if InputPressed("r") then
+			local back = client.prevTool
+			if not back or not GetBool("game.tool." .. back .. ".enabled") then back = "sledge" end
+			ServerCall("server.putAway", me, back)
+		end
 	end
 	if c then
 		SetBool("game.input.locktool", true)           -- the wheel sets the power
@@ -1574,15 +1593,14 @@ function client.draw(dt)
 			UiTranslate(0, 26)
 			UiFont("regular.ttf", 18)
 			UiColor(1, 1, 1, 0.8)
-			UiText(tr("Q: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   T: copy what you aim at   RMB: ride   R: remove all",
-				"Q: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   T: копия предмета под прицелом   ПКМ: полететь самому   R: убрать все"))
-			-- in-game 17.10: say plainly how to get the wheel and 1-9 back for the other tools
+			-- two short lines instead of one of 1185 px (review 17.10)
+			UiText(tr("Q: fire   Wheel: power   Z/X: turn   V/B: angle   1-4: ammo   T: copy what you aim at",
+				"Q: выстрел   Колесо: сила   Z/X: поворот   V/B: угол   1-4: снаряд   T: копия предмета под прицелом"))
 			UiTranslate(0, 24)
-			UiColor(1, 0.85, 0.5, 0.9)
-			UiText(tr("Other tools: press R (removes the catapults) or walk 40 m away - then the wheel and 1-9 switch tools again",
-				"Другие инструменты: нажми R (уберёт катапульты) или отойди на 40 м - тогда колесо и 1-9 снова переключают инструменты"))
+			UiText(tr("RMB: ride   R: other tools (the catapults stay)   Delete: remove all catapults",
+				"ПКМ: полететь самому   R: другие инструменты (катапульты останутся)   Delete: убрать все катапульты"))
 		else
-			UiText(tr("LMB: place a catapult in front of you   R: remove all", "ЛКМ: поставить катапульту перед собой   R: убрать все"))
+			UiText(tr("LMB: place a catapult in front of you   Delete: remove all", "ЛКМ: поставить катапульту перед собой   Delete: убрать все"))
 		end
 		if client.msgT > 0 then
 			UiTranslate(0, 28)

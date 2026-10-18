@@ -151,15 +151,19 @@ local f0 = sh().cp.fireN
 srv().fire(c2)
 T.check(sh().cp.fireN == f0, "a broken catapult does not fire")
 
--- R removes everything
+-- R only puts the catapult away, Delete removes everything (18.10: "removing them all should be on another key")
 H.P(1).pos = V(0, 0, 0)
+local nCats = #srv().cats
+T.press("r"); T.frames(3)
+T.check(H.P(1).tool ~= "catapult" and #srv().cats == nCats, string.format("R puts the catapult away (tool %s), the catapults stay (%d)", H.P(1).tool, #srv().cats))
+T.select("catapult"); T.frames(2)
 local bodies = {}
 for _, c in ipairs(srv().cats) do bodies[#bodies + 1] = c.frame bodies[#bodies + 1] = c.arm end
 for _, a in ipairs(srv().ammo) do bodies[#bodies + 1] = a.body end
-T.press("r"); T.frames(3)
+T.press("delete"); T.frames(3)
 local left = 0
 for _, b in ipairs(bodies) do if H.API.IsHandleValid(b) then left = left + 1 end end
-T.check(#srv().cats == 0 and left == 0, "R removes every catapult and all mod ammo (" .. left .. " left)")
+T.check(#srv().cats == 0 and left == 0, "Delete removes every catapult and all mod ammo (" .. left .. " left)")
 T.check(T.hasText("Catapults removed"), "message after removal")
 
 -- Russian, options

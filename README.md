@@ -4,7 +4,8 @@ A collection of Teardown 2.x mods (scripting API `#version 2`: `server` / `clien
 Every mod has its own folder with the built mod in `mod/`, generators in `tools/`, offline tests in `tests/`
 and its own README in English and Russian. Russian version of this page: [README.ru.md](README.ru.md).
 
-[![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+[![Status](https://img.shields.io/badge/status-stable-brightgreen)](#) [![Lua](https://img.shields.io/badge/Lua-2C2D72?logo=lua&logoColor=white)](https://www.lua.org/) [![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+
 Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, testing and decisions - Alexey.
 
 <!-- mods -->

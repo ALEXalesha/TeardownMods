@@ -132,6 +132,7 @@ local function readTint()
 	return { sat = sat or 1, r = r or 1, g = g or 1, b = b or 1 }
 end
 
+-- the baseline is taken once in client.init: another mod's tint (for example a
 -- replay) must not become our "original"
 local function captureOriginal()
 	client.orig = client.base

@@ -4,26 +4,20 @@
 
 ## English
 
-### 2026-10-18 (evening) - replay mod: the game replays the destruction itself
-
-
-### 2026-10-18 - replay mod: explosion effects and big explosions; catapult: Delete removes, R puts away
+### 2026-10-18 - catapult: Delete removes, R puts away
 
 - **Catapult**: R removed all catapults, and R was also the way back to the other tools. Now R puts the catapult away (back to the tool you had, the catapults stay) and Delete removes all catapults. The hint is two short lines.
 
-### 2026-10-17 (evening) - replay mod replays the destruction
-
-
-### 2026-10-17 (afternoon) - catapult: every load flies, RMB launches you; replay mod replays you too
+### 2026-10-17 (afternoon) - catapult: every load flies, RMB launches you
 
 - **Catapult**: "the car finally fires properly, but the other loads just stay hanging in the air". The boulder, the barrel and the crates lie still in the bucket and the game takes them out of the simulation; in the game nothing brought them back (not even waking them up by script), so they were moved to the release point and hung there. The car, a vehicle, stayed in the simulation and flew. Now the mod throws a fresh copy of its load at the release (a just-created object is always simulated, the way the game itself throws things), carries the load with the bucket during the swing by moving it, and if a thrown load still does not move it is put on its arc again (up to 3 times).
 - **Catapult**: "RMB load should load me into the catapult and send me". RMB with the catapult in hand now puts you into the bucket of the nearest ready catapult (its own load is taken out), fires at once and throws you along the aiming arc; you pass through the catapult while you leave it and take no fall damage by default.
 
-### 2026-10-17 - replay mod: one third-person camera that stays out of walls; catapult loads fly
+### 2026-10-17 - catapult loads fly
 
 - **Catapult**: every load flies along the aiming arc and the car no longer vanishes after a shot (the load is woken up before the throw, the car counts as one load, the load is released exactly at the release angle with the planned speed).
 
-### 2026-10-16 (night) - catapult appears again, drone keeps reacting, replay camera stays above the ground
+### 2026-10-16 (night) - catapult appears again, drone keeps reacting
 
 - **Catapult**: it did not appear at all ("refused: missing frame among 2 bodies / 7 shapes"). The game created every part, but the mod recognised the parts by the size of their model files, and the game counts only the filled voxels: the frame's model has empty outer columns, so its size did not match. Now every part carries its own tag and is recognised by it (the size and the frame body are fallbacks).
 - **Camera Drone**: it stopped reacting to the keys after a few seconds of flight. In the game the drone flies on its fallback (the body is moved by the mod). Since the 16.10 review it tried every 3 s whether normal flight works again: it made the body dynamic and read its velocity back. A body that was static is not simulated again by that alone, so the test velocity was just read back, the test "passed" and the drone stood still in a mode that never noticed it. Now the test wakes the body and checks that it really moved, and normal flight checks real movement too.
@@ -70,26 +64,20 @@
 
 ## Русский
 
-### 2026-10-18 (вечер) - мод повтора: разрушения повторяет сама игра
-
-
-### 2026-10-18 - мод повтора: эффекты взрывов и большие взрывы; катапульта: Delete удаляет, R убирает из рук
+### 2026-10-18 - катапульта: Delete удаляет, R убирает из рук
 
 - **Катапульта**: R удаляла все катапульты, и R же была способом вернуться к другим инструментам. Теперь R убирает катапульту из рук (возвращает прежний инструмент, катапульты остаются), а Delete удаляет все катапульты. Подсказка - две короткие строки.
 
-### 17.10.2026 (вечер) - мод повтора повторяет разрушения
-
-
-### 17.10.2026 (день) - катапульта: летят все снаряды, ПКМ запускает вас; мод повтора повторяет и вас
+### 17.10.2026 (день) - катапульта: летят все снаряды, ПКМ запускает вас
 
 - **Катапульта**: «машина наконец-то выстреливается нормально, а другие снаряды просто остаются висеть в воздухе». Валун, бочка и ящики лежат в ковше неподвижно, и игра выводит их из симуляции; в игре их ничто не возвращало (даже пробуждение скриптом), поэтому они переносились в точку спуска и висели там. Машина - транспорт - оставалась в симуляции и летела. Теперь мод бросает свежую копию своего снаряда в момент спуска (только что созданный предмет всегда в симуляции - так бросает предметы сама игра), во время взмаха переносит груз вместе с ковшом, а если брошенный груз всё равно не движется, ставит его на дугу ещё раз (до 3 раз).
 - **Катапульта**: «кнопка зарядить ПКМ должна заряжать меня в катапульту и отправлять». ПКМ с катапультой в руках теперь сажает вас в ковш ближайшей готовой катапульты (её снаряд убирается), сразу стреляет и бросает вас по дуге прицела; пока вы вылетаете, катапульта вас не задерживает, урона от падения по умолчанию нет.
 
-### 17.10.2026 - мод повтора: одна камера от третьего лица, не заходит в стены; снаряды катапульты летят
+### 17.10.2026 - снаряды катапульты летят
 
 - **Катапульта**: каждый снаряд летит по дуге прицела, машина после выстрела больше не пропадает (снаряд будится перед броском, машина считается одним зарядом, выпуск ровно на угле выпуска с расчётной скоростью).
 
-### 16.10.2026 (ночь) - катапульта снова ставится, дрон не перестаёт слушаться, камера повтора не уходит в землю
+### 16.10.2026 (ночь) - катапульта снова ставится, дрон не перестаёт слушаться
 
 - **Катапульта**: не ставилась совсем («refused: missing frame among 2 bodies / 7 shapes»). Игра создавала все детали, но мод узнавал их по размеру файла модели, а игра считает только заполненные воксели: у станины крайние столбцы пустые, и размер не совпадал. Теперь у каждой детали своя метка, и мод узнаёт деталь по ней (размер и тело станины - запасные способы).
 - **Дрон с камерой**: через несколько секунд полёта переставал слушаться клавиш. В игре дрон летит на запасном режиме (тело двигает сам мод). С проверки 16.10 он каждые 3 с пробовал, работает ли обычный полёт: делал тело динамическим и читал его скорость. Тело, которое было статическим, от этого снова не просчитывается, скорость просто читалась обратно, проба «удавалась», и дрон замирал в режиме, который этого не замечал. Теперь проба будит тело и проверяет, что оно правда сдвинулось, а обычный полёт тоже смотрит на настоящее движение.

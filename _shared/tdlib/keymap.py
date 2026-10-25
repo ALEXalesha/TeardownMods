@@ -6,10 +6,10 @@ speed). This table is the single list of keys; the law checks it against the cod
 and against the game's own keys.
 
 Where a key works ("ctx"):
-  global  - always, whatever is in the hands (Gravity Change, Time Slow, replay mod)
+  global  - always, whatever is in the hands (Gravity Change, Time Slow)
   tool    - only while this mod's tool is in the hands
-  replay  - while replay mod shows a replay; the replay puts the owner's tool away (SetPlayerTool
-            "none"), so no tool key works then (law replay mod/tests/replay_tool_law.lua)
+  replay  - while a replay mod shows a replay; the replay puts the owner's tool away (SetPlayerTool
+            "none"), so no tool key works then (law in that mod's tests/replay_tool_law.lua)
   drone   - while flying the Camera Drone; it ends when the drone tool is put away
   remote  - while driving a car with the Vehicle Remote; it ends when the remote is put away
             (law remote/tests/tool_switch_law.lua)
@@ -85,13 +85,6 @@ KEYMAP = {
         K("global", ["h", "y", "mmb"], "slow motion (hold or toggle)", "замедление (держать или нажать-отжать)", option="key"),
         K("global", ["j", "i"], "speed x0.5 / x0.25 / x0.1", "скорость x0,5 / x0,25 / x0,1", option="speedkey"),
     ],
-    "replay mod": [
-        K("global", ["o", "l"], "open / close the replay", "открыть / закрыть повтор", option="key"),
-        K("replay", ["p"], "pause / play", "пауза / воспроизведение"),
-        K("replay", ["leftarrow", "rightarrow"], "scrub back / forward", "перемотка назад / вперёд"),
-        K("replay", ["uparrow", "downarrow"], "speed", "скорость"),
-        K("replay", ["r"], "restart", "с начала"),
-    ],
     "mover": [
         K("tool", ["q", "r"], "rotate", "поворот"),
         K("tool", ["z", "x"], "tilt", "наклон"),
@@ -134,6 +127,24 @@ TUPLE = re.compile(r"\{\s*\"([a-z0-9])\"\s*,\s*-?\d")          # mover: { "q", 1
 OPTION_ROW = re.compile(r"\{ kind = \"choice\", key = \"(\w+)\".*?default = \"([^\"]*)\", choices = \{(.*?)\} \},?\s*$", re.M)
 CHOICE = re.compile(r"\{ \"([^\"]*)\", \"([^\"]*)\", \"([^\"]*)\" \}")
 
+
+# Mods may keep their rows next to their own code, in <mod>/tdlib_extra.py (KEYMAP_EXTRA): the shared
+# table then does not name a mod that a copy of the repository does not have. Such mods are checked by
+# the law like all others but stay out of the README key tables (EXTRA_MODS).
+EXTRA_MODS = set()
+
+
+def _load_extras():
+    import runpy
+    for m in sorted(os.listdir(ROOT)):
+        p = os.path.join(ROOT, m, "tdlib_extra.py")
+        if os.path.isfile(p):
+            extra = runpy.run_path(p, init_globals={"K": K}).get("KEYMAP_EXTRA", {})
+            KEYMAP.update(extra)
+            EXTRA_MODS.update(extra)
+
+
+_load_extras()
 
 def is_raw(name: str) -> bool:
     return bool(RAW.match(name)) and name not in ACTIONS
@@ -284,7 +295,7 @@ def markdown(ru: bool) -> str:
     head = ("| Мод | Клавиша | Где действует | Что делает |\n|---|---|---|---|" if ru else
             "| Mod | Key | Where it works | What it does |\n|---|---|---|---|")
     rows = []
-    for m in sorted(KEYMAP):
+    for m in sorted(set(KEYMAP) - EXTRA_MODS):
         for e in KEYMAP[m]:
             keys = " / ".join(label(k, ru) for k in e["keys"])
             if e["option"]:

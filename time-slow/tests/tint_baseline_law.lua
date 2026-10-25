@@ -1,4 +1,5 @@
 -- Tint baseline law (independent review 16.10.2026). Slow motion saved the CURRENT saturation as the
+-- "original" when it started. Started during another mod's replay, it saved the replay's tinted value and
 -- put it back when it ended, after the replay had already restored its own: the picture stayed
 -- desaturated. Here the other mod is simulated by writing the post-processing value directly
 -- (after this mod, every frame).
@@ -8,6 +9,7 @@ H.addPlayer(1, V(0, 0, 0))
 T.load("main.lua", "main")
 T.init("main")
 T.frames(2)
+-- another mod (a replay) tints the picture every frame
 local other = 0.55
 table.insert(T.frameHooks, function() if other then H.post.saturation = { other } end end)
 T.frames(10)
